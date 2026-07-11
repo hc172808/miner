@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GYDS Miner Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo">⛏</div>
+        <div>
+          <h1>GYDS Miner</h1>
+          <p id="hostLabel" class="muted">connecting…</p>
+        </div>
+      </div>
+      <div id="statusPill" class="pill pill-off">Stopped</div>
+    </header>
+
+    <div id="loginGate" class="card" style="display:none">
+      <h2>Dashboard password</h2>
+      <p class="muted">This miner is password-protected.</p>
+      <input id="passwordInput" type="password" placeholder="Password" />
+      <button class="btn primary" onclick="submitPassword()">Unlock</button>
+      <p id="loginError" class="error"></p>
+    </div>
+
+    <main id="appMain" style="display:none">
+      <section class="grid">
+        <div class="card stat">
+          <span class="label">Hash Rate</span>
+          <span id="hashRate" class="value">0 H/s</span>
+        </div>
+        <div class="card stat">
+          <span class="label">Valid Shares</span>
+          <span id="validShares" class="value">0</span>
+        </div>
+        <div class="card stat">
+          <span class="label">Rejected Shares</span>
+          <span id="rejectedShares" class="value">0</span>
+        </div>
+        <div class="card stat">
+          <span class="label">Total Reward</span>
+          <span id="totalReward" class="value">0 GYDS</span>
+        </div>
+        <div class="card stat">
+          <span class="label">Block Height</span>
+          <span id="blockHeight" class="value">—</span>
+        </div>
+        <div class="card stat">
+          <span class="label">Uptime</span>
+          <span id="uptime" class="value">0s</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row-between">
+          <h2>Controls</h2>
+          <div class="btn-group">
+            <button id="startBtn" class="btn primary" onclick="callAction('start')">Start Mining</button>
+            <button id="stopBtn" class="btn danger" onclick="callAction('stop')">Stop Mining</button>
+          </div>
+        </div>
+        <p id="actionMessage" class="muted"></p>
+      </section>
+
+      <section class="card">
+        <h2>Configuration</h2>
+        <div class="form-grid">
+          <label>RPC Endpoint
+            <input id="cfgRpc" type="text" placeholder="https://netlifegy.com/api/mining/rpc" />
+          </label>
+          <label>Miner Wallet Address
+            <input id="cfgAddress" type="text" placeholder="0x..." />
+          </label>
+          <label>Worker Name
+            <input id="cfgWorker" type="text" placeholder="ubuntu-rig-1" />
+          </label>
+          <label>Threads
+            <input id="cfgThreads" type="number" min="1" />
+          </label>
+          <label>Dashboard Password <span class="muted">(leave blank to keep unchanged)</span>
+            <input id="cfgPassword" type="password" placeholder="••••••••" />
+          </label>
+        </div>
+        <button class="btn primary" onclick="saveConfig()">Save Configuration</button>
+        <p id="configMessage" class="muted"></p>
+      </section>
+
+      <section class="card">
+        <h2>System</h2>
+        <div id="systemInfo" class="system-grid"></div>
+      </section>
+
+      <section class="card">
+        <h2>Activity Log</h2>
+        <pre id="logBox" class="log-box"></pre>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
