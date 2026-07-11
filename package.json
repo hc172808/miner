@@ -1,0 +1,17 @@
+{
+  "name": "gyds-miner",
+  "version": "1.0.0",
+  "description": "Standalone GYDS network miner with a built-in web dashboard",
+  "main": "miner.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node miner.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "license": "MIT"
+}
