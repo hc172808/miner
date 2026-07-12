@@ -36,6 +36,20 @@ Edit `config.json` or use the web dashboard at runtime:
 - Express for the web dashboard
 - SHA-256 hashing via Node's built-in `crypto`
 
+## Mobile / Termux
+
+See **TERMUX.md** for the full Android setup guide.
+
+Quick start on Termux:
+```bash
+pkg install nodejs git -y
+git clone <your-repo> gyds-miner && cd gyds-miner
+npm install
+node miner.js
+# then open http://localhost:5000 in your phone browser
+```
+
 ## User preferences
 
+- RPC endpoint: `https://rpc.nelifegy.com` (Cloudflare-proxied GYDS node)
 - Dashboard port: 5000 (required for Replit webview)

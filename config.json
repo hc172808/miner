@@ -1,5 +1,5 @@
 {
-  "rpcEndpoint": "https://netlifegy.com/api/mining/rpc",
+  "rpcEndpoint": "https://rpc.nelifegy.com",
   "minerAddress": "",
   "workerName": "replit-rig-1",
   "threads": 0,
