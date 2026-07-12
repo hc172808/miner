@@ -100,6 +100,53 @@ function drawChart(history) {
   ctx.fillText(fmtHashRate(history[peakIdx].hr), px, Math.max(py - 4, 12));
 }
 
+// ── Coin presets ──────────────────────────────────────────────────────────────
+let coinPresets = [];
+let selectedPreset = null;
+
+async function loadPresets() {
+  try {
+    const r = await api('/api/coin-presets');
+    coinPresets = r.presets || [];
+    renderPresetGrid();
+  } catch {}
+}
+
+function renderPresetGrid() {
+  const grid = document.getElementById('presetGrid');
+  if (!grid || !coinPresets.length) return;
+  grid.innerHTML = coinPresets.map(p => `
+    <button type="button" class="preset-chip" data-symbol="${escHtml(p.symbol)}"
+            onclick="selectPreset(${escHtml(JSON.stringify(p))})">
+      ${escHtml(p.symbol)}
+    </button>
+  `).join('');
+}
+
+function selectPreset(preset) {
+  if (typeof preset === 'string') preset = JSON.parse(preset);
+  selectedPreset = preset;
+
+  // Highlight chip
+  document.querySelectorAll('.preset-chip').forEach(el => {
+    el.classList.toggle('selected', el.dataset.symbol === preset.symbol);
+  });
+
+  // Fill form fields (only if not manually edited — or always for name/symbol)
+  const nameEl   = document.getElementById('newName');
+  const symbolEl = document.getElementById('newSymbol');
+  const rpcEl    = document.getElementById('newRpc');
+
+  nameEl.value   = preset.name;
+  symbolEl.value = preset.symbol;
+  if (preset.suggestedRpc) rpcEl.value = preset.suggestedRpc;
+
+  // Clear touched flags so auto-detect still works after picking a preset
+  delete nameEl.dataset.touched;
+  delete symbolEl.dataset.touched;
+  if (preset.suggestedRpc) delete rpcEl.dataset.touched;
+}
+
 // ── Coin management UI ────────────────────────────────────────────────────────
 let coinsCache = [];
 let activeCoinId = null;
@@ -114,11 +161,17 @@ function renderCoins(coins, activeId) {
   }
   el.innerHTML = coins.map(c => {
     const isActive = c.id === activeId;
+    const mode     = c.miningMode || 'pool';
+    const modeBadge = `<span class="mode-badge ${mode}">${mode === 'solo' ? '🎯 Solo' : '🏊 Pool'}</span>`;
     return `
     <div class="coin-item${isActive ? ' active' : ''}">
-      <div class="coin-symbol">${(c.symbol || '?').slice(0, 4)}</div>
+      <div class="coin-symbol">${(c.symbol || '?').slice(0, 5)}</div>
       <div class="coin-info">
-        <div class="coin-name">${escHtml(c.name)} ${isActive ? '<span class="active-tag">● ACTIVE</span>' : ''}</div>
+        <div class="coin-name">
+          ${escHtml(c.name)}
+          ${modeBadge}
+          ${isActive ? '<span class="active-tag">● ACTIVE</span>' : ''}
+        </div>
         <div class="coin-addr" title="${escHtml(c.walletAddress)}">${escHtml(c.walletAddress)}</div>
         <div class="coin-rpc"  title="${escHtml(c.rpcEndpoint)}">${escHtml(c.rpcEndpoint)}</div>
       </div>
@@ -130,7 +183,10 @@ function renderCoins(coins, activeId) {
   }).join('');
 }
 
-function escHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escHtml(s) {
+  if (typeof s !== 'string') s = JSON.stringify(s);
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 async function activateCoin(id) {
   await api(`/api/coins/${id}/activate`, { method: 'POST' });
@@ -143,7 +199,11 @@ async function deleteCoin(id, name) {
   refresh();
 }
 
-function showAddCoin() { document.getElementById('addCoinForm').style.display = 'block'; }
+function showAddCoin() {
+  document.getElementById('addCoinForm').style.display = 'block';
+  // Load presets lazily the first time form is opened
+  if (!coinPresets.length) loadPresets();
+}
 function hideAddCoin() {
   document.getElementById('addCoinForm').style.display = 'none';
   document.getElementById('addCoinMsg').textContent = '';
@@ -172,6 +232,11 @@ async function detectCoinFromInput(address) {
   });
 });
 
+function getSelectedMode() {
+  const checked = document.querySelector('input[name="newMode"]:checked');
+  return checked ? checked.value : 'pool';
+}
+
 async function addCoin() {
   const body = {
     walletAddress: document.getElementById('newAddress').value.trim(),
@@ -180,6 +245,7 @@ async function addCoin() {
     symbol:        document.getElementById('newSymbol').value.trim(),
     cfClientId:    document.getElementById('newCfId').value.trim(),
     cfClientSecret:document.getElementById('newCfSecret').value,
+    miningMode:    getSelectedMode(),
   };
   if (!body.walletAddress || !body.rpcEndpoint) {
     document.getElementById('addCoinMsg').textContent = 'Wallet address and RPC endpoint are required.';
@@ -192,6 +258,12 @@ async function addCoin() {
       const el = document.getElementById(id);
       if (el) { el.value = ''; delete el.dataset.touched; }
     });
+    // Reset mode to pool
+    const poolRadio = document.querySelector('input[name="newMode"][value="pool"]');
+    if (poolRadio) poolRadio.checked = true;
+    // Reset preset selection
+    selectedPreset = null;
+    document.querySelectorAll('.preset-chip').forEach(el => el.classList.remove('selected'));
     hideAddCoin();
     refresh();
   } else {
@@ -233,9 +305,12 @@ async function refresh() {
 
     // Active coin label
     const acl = document.getElementById('activeCoinLabel');
-    acl.textContent = data.activeCoin
-      ? `Active: ${data.activeCoin.name} (${data.activeCoin.symbol})`
-      : 'No coin selected — add one below';
+    if (data.activeCoin) {
+      const mode = data.activeCoin.miningMode || 'pool';
+      acl.textContent = `Active: ${data.activeCoin.name} (${data.activeCoin.symbol}) · ${mode === 'solo' ? '🎯 Solo' : '🏊 Pool'}`;
+    } else {
+      acl.textContent = 'No coin selected — add one below';
+    }
 
     // Buttons
     document.getElementById('startBtn').disabled = data.running || data.reconnecting;

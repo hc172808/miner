@@ -45,8 +45,11 @@ function loadConfig() {
       rpcEndpoint: raw.rpcEndpoint || 'https://netlifegy.com/api/mining/rpc',
       cfClientId: raw.cfClientId || '',
       cfClientSecret: raw.cfClientSecret || '',
+      miningMode: 'pool',
     }];
   }
+  // Ensure every coin has miningMode
+  coins = coins.map(c => ({ miningMode: 'pool', ...c }));
 
   return {
     coins,
@@ -81,20 +84,61 @@ function saveConfig(cfg) {
 
 let config = loadConfig();
 
+// ── Coin presets ──────────────────────────────────────────────────────────────
+const COIN_PRESETS = [
+  { symbol: 'GYDS',   name: 'GYDS',           suggestedRpc: 'https://netlifegy.com/api/mining/rpc' },
+  { symbol: 'ETH',    name: 'Ethereum',        suggestedRpc: '' },
+  { symbol: 'MONAD',  name: 'Monad',           suggestedRpc: '' },
+  { symbol: 'BNB',    name: 'BNB Chain',       suggestedRpc: '' },
+  { symbol: 'MATIC',  name: 'Polygon',         suggestedRpc: '' },
+  { symbol: 'AVAX',   name: 'Avalanche',       suggestedRpc: '' },
+  { symbol: 'SOL',    name: 'Solana',          suggestedRpc: '' },
+  { symbol: 'TRX',    name: 'Tron',            suggestedRpc: '' },
+  { symbol: 'ADA',    name: 'Cardano',         suggestedRpc: '' },
+  { symbol: 'XMR',    name: 'Monero',          suggestedRpc: '' },
+  { symbol: 'BTC',    name: 'Bitcoin',         suggestedRpc: '' },
+  { symbol: 'LTC',    name: 'Litecoin',        suggestedRpc: '' },
+  { symbol: 'DOGE',   name: 'Dogecoin',        suggestedRpc: '' },
+  { symbol: 'XRP',    name: 'Ripple',          suggestedRpc: '' },
+  { symbol: 'CUSTOM', name: 'Custom Network',  suggestedRpc: '' },
+];
+
 // ── Coin auto-detection ───────────────────────────────────────────────────────
 function detectCoin(address) {
   if (!address) return { name: 'Unknown', symbol: '?', suggestedRpc: '' };
   const a = address.trim();
+
+  // EVM-compatible (GYDS, ETH, Monad, BNB, MATIC, AVAX, etc.)
   if (/^0x[0-9a-fA-F]{40}$/.test(a))
-    return { name: 'GYDS',     symbol: 'GYDS', suggestedRpc: 'https://netlifegy.com/api/mining/rpc' };
+    return { name: 'GYDS / EVM', symbol: 'GYDS', suggestedRpc: 'https://netlifegy.com/api/mining/rpc' };
+  // Bitcoin legacy & bech32
   if (/^(1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(a) || /^bc1[a-z0-9]{6,87}$/.test(a))
     return { name: 'Bitcoin',  symbol: 'BTC',  suggestedRpc: '' };
-  if (/^[LM3][a-km-zA-HJ-NP-Z1-9]{26,33}$/.test(a))
+  // Litecoin
+  if (/^[LM][a-km-zA-HJ-NP-Z1-9]{26,33}$/.test(a))
     return { name: 'Litecoin', symbol: 'LTC',  suggestedRpc: '' };
+  // Dogecoin
   if (/^D[5-9A-HJ-NP-U][1-9A-HJ-NP-Za-km-z]{32}$/.test(a))
     return { name: 'Dogecoin', symbol: 'DOGE', suggestedRpc: '' };
-  if (/^[RT][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(a))
-    return { name: 'Ripple / Testnet', symbol: 'XRP', suggestedRpc: '' };
+  // Tron (T + 33 base58 chars)
+  if (/^T[A-HJ-NP-Za-km-z1-9]{33}$/.test(a))
+    return { name: 'Tron',     symbol: 'TRX',  suggestedRpc: '' };
+  // Cardano Shelley
+  if (/^addr1[a-z0-9]{50,}$/.test(a))
+    return { name: 'Cardano',  symbol: 'ADA',  suggestedRpc: '' };
+  // Cardano Byron
+  if (/^(Ae2|DdzFF)[a-zA-Z0-9]+$/.test(a))
+    return { name: 'Cardano',  symbol: 'ADA',  suggestedRpc: '' };
+  // Monero (95 chars, starts with 4 or 8)
+  if (/^[48][0-9A-Za-z]{94}$/.test(a))
+    return { name: 'Monero',   symbol: 'XMR',  suggestedRpc: '' };
+  // Ripple / XRP
+  if (/^r[a-km-zA-HJ-NP-Z1-9]{24,34}$/.test(a))
+    return { name: 'Ripple',   symbol: 'XRP',  suggestedRpc: '' };
+  // Solana (base58, typically 43–44 chars)
+  if (/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(a))
+    return { name: 'Solana',   symbol: 'SOL',  suggestedRpc: '' };
+
   return { name: 'Custom Network', symbol: 'CUSTOM', suggestedRpc: '' };
 }
 
@@ -254,9 +298,10 @@ function scheduleReconnect() {
     const coin = activeCoin();
     if (!coin) { state.reconnecting = false; return; }
     try {
-      const conn = await rpc('mining_connect', { minerAddress: coin.walletAddress, workerName: config.workerName });
+      const mode = coin.miningMode || 'pool';
+      const conn = await rpc('mining_connect', { minerAddress: coin.walletAddress, workerName: config.workerName, mode });
       state.sessionId = conn.sessionId;
-      state.poolName  = conn.poolName || null;
+      state.poolName  = conn.poolName || (mode === 'solo' ? 'Solo Node' : null);
       state.connected = true;
       state.reconnecting = false;
       state.reconnectAttempt = 0;
@@ -285,9 +330,10 @@ async function startMining() {
   cancelReconnect();
 
   try {
-    const conn = await rpc('mining_connect', { minerAddress: coin.walletAddress, workerName: config.workerName });
+    const mode = coin.miningMode || 'pool';
+    const conn = await rpc('mining_connect', { minerAddress: coin.walletAddress, workerName: config.workerName, mode });
     state.sessionId = conn.sessionId;
-    state.poolName  = conn.poolName || null;
+    state.poolName  = conn.poolName || (mode === 'solo' ? 'Solo Node' : null);
     state.connected = true;
   } catch (err) {
     state.lastError = err.message;
@@ -302,7 +348,8 @@ async function startMining() {
   state.totalReward       = 0;
   state.lastError         = null;
   state.hashHistory       = [];
-  pushLog(`Mining ${coin.symbol} on "${coin.rpcEndpoint}" as "${config.workerName}" (${coin.walletAddress})`);
+  const mode = coin.miningMode || 'pool';
+  pushLog(`[${mode.toUpperCase()}] Mining ${coin.symbol} on "${coin.rpcEndpoint}" as "${config.workerName}" (${coin.walletAddress})`);
 
   await fetchNewWork();
   spawnWorkers();
@@ -383,7 +430,7 @@ app.get('/api/status', requireAuth, (req, res) => {
     uptime:            state.startTime ? Math.floor((Date.now() - state.startTime) / 1000) : 0,
     lastError:         state.lastError,
     log:               state.log.slice(-100),
-    activeCoin:        coin ? { id: coin.id, name: coin.name, symbol: coin.symbol } : null,
+    activeCoin:        coin ? { id: coin.id, name: coin.name, symbol: coin.symbol, miningMode: coin.miningMode || 'pool' } : null,
     efficiency: { effScore, hpsPerThread },
     config: {
       activeCoinId:    config.activeCoinId,
@@ -411,7 +458,7 @@ app.get('/api/coins', requireAuth, (req, res) => {
 });
 
 app.post('/api/coins', requireAuth, (req, res) => {
-  const { walletAddress, rpcEndpoint, name, symbol, cfClientId, cfClientSecret } = req.body || {};
+  const { walletAddress, rpcEndpoint, name, symbol, cfClientId, cfClientSecret, miningMode } = req.body || {};
   if (!walletAddress || !rpcEndpoint) return res.status(400).json({ error: 'walletAddress and rpcEndpoint are required.' });
   const detected = detectCoin(walletAddress);
   const coin = {
@@ -422,11 +469,12 @@ app.post('/api/coins', requireAuth, (req, res) => {
     rpcEndpoint:   rpcEndpoint.trim(),
     cfClientId:    cfClientId    || '',
     cfClientSecret:cfClientSecret || '',
+    miningMode:    (miningMode === 'solo' ? 'solo' : 'pool'),
   };
   config.coins.push(coin);
   if (!config.activeCoinId) config.activeCoinId = coin.id;
   saveConfig(config);
-  pushLog(`Coin added: ${coin.symbol} (${coin.walletAddress.slice(0, 10)}…)`);
+  pushLog(`Coin added: ${coin.symbol} [${coin.miningMode}] (${coin.walletAddress.slice(0, 10)}…)`);
   res.json({ ok: true, coin, coins: config.coins, activeCoinId: config.activeCoinId });
 });
 
@@ -440,6 +488,7 @@ app.put('/api/coins/:id', requireAuth, async (req, res) => {
   if (b.symbol)        coin.symbol        = b.symbol.trim();
   if (typeof b.cfClientId === 'string')     coin.cfClientId     = b.cfClientId.trim();
   if (typeof b.cfClientSecret === 'string') coin.cfClientSecret = b.cfClientSecret;
+  if (b.miningMode === 'solo' || b.miningMode === 'pool') coin.miningMode = b.miningMode;
   saveConfig(config);
   res.json({ ok: true, coin });
 });
@@ -469,6 +518,11 @@ app.post('/api/coins/:id/activate', requireAuth, async (req, res) => {
 app.post('/api/detect-coin', requireAuth, (req, res) => {
   const { walletAddress } = req.body || {};
   res.json(detectCoin(walletAddress));
+});
+
+// Known coin presets for the UI picker
+app.get('/api/coin-presets', requireAuth, (req, res) => {
+  res.json({ presets: COIN_PRESETS });
 });
 
 // ── General config ────────────────────────────────────────────────────────────

@@ -101,19 +101,27 @@
         <!-- Add coin form (hidden by default) -->
         <div id="addCoinForm" style="display:none;margin-top:14px;border-top:1px solid #1e2733;padding-top:14px">
           <h3 class="section-label">New Coin</h3>
+
+          <!-- Preset picker row -->
+          <div style="margin-bottom:14px">
+            <label class="preset-label">Quick-pick a network
+              <div id="presetGrid" class="preset-grid"></div>
+            </label>
+          </div>
+
           <div class="form-grid">
-            <label>Wallet Address <span class="muted">(auto-detects coin type)</span>
-              <input id="newAddress" type="text" placeholder="0x… or bc1… or custom"
+            <label>Wallet Address <span class="muted">(auto-detects chain)</span>
+              <input id="newAddress" type="text" placeholder="0x… / SOL… / addr1…"
                      oninput="detectCoinFromInput(this.value)" />
             </label>
-            <label>Detected / Name
+            <label>Name
               <input id="newName" type="text" placeholder="GYDS" />
             </label>
             <label>Symbol
               <input id="newSymbol" type="text" placeholder="GYDS" style="max-width:120px" />
             </label>
             <label>RPC Endpoint <span class="muted">(mining node URL)</span>
-              <input id="newRpc" type="text" placeholder="https://netlifegy.com/api/mining/rpc" />
+              <input id="newRpc" type="text" placeholder="https://…" />
             </label>
             <label>CF-Access-Client-Id <span class="muted">(if behind Cloudflare)</span>
               <input id="newCfId" type="text" placeholder="optional" autocomplete="off" />
@@ -122,7 +130,29 @@
               <input id="newCfSecret" type="password" placeholder="optional" autocomplete="off" />
             </label>
           </div>
-          <div class="btn-group" style="margin-top:10px">
+
+          <!-- Solo / Pool toggle -->
+          <div style="margin-top:14px">
+            <span class="section-label" style="display:block;margin-bottom:8px">Mining Mode</span>
+            <div class="mode-toggle">
+              <label class="mode-opt">
+                <input type="radio" name="newMode" value="pool" checked />
+                <span class="mode-card">
+                  <strong>🏊 Pool Mining</strong>
+                  <small>Join a pool — share rewards, steady income</small>
+                </span>
+              </label>
+              <label class="mode-opt">
+                <input type="radio" name="newMode" value="solo" />
+                <span class="mode-card">
+                  <strong>🎯 Solo Mining</strong>
+                  <small>Mine alone — rare but full block reward</small>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="btn-group" style="margin-top:12px">
             <button class="btn primary" onclick="addCoin()">Add Coin</button>
             <button class="btn" onclick="hideAddCoin()">Cancel</button>
           </div>

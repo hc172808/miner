@@ -106,6 +106,46 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
   font-size: 13px; color: #fbbf24;
 }
 
+/* Coin mode badge */
+.mode-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.mode-badge.pool { background: rgba(99,102,241,.18); color: #818cf8; }
+.mode-badge.solo { background: rgba(245,158,11,.18); color: #fbbf24; }
+
+/* Preset grid */
+.preset-label { font-size: 12px; color: #9fb0c0; text-transform: uppercase; letter-spacing: .04em; }
+.preset-grid {
+  display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px;
+}
+.preset-chip {
+  border: 1px solid #1e2733; background: #0d1117; border-radius: 8px;
+  padding: 5px 10px; font-size: 12px; font-weight: 600; color: #9fb0c0;
+  cursor: pointer; transition: all .15s;
+}
+.preset-chip:hover    { border-color: #14b8a6; color: #2dd4bf; }
+.preset-chip.selected { border-color: #14b8a6; color: #2dd4bf; background: rgba(20,184,166,.08); }
+
+/* Solo / Pool toggle */
+.mode-toggle { display: flex; gap: 10px; flex-wrap: wrap; }
+.mode-opt { cursor: pointer; }
+.mode-opt input[type="radio"] { display: none; }
+.mode-card {
+  display: flex; flex-direction: column; gap: 3px;
+  border: 1px solid #1e2733; background: #0d1117;
+  border-radius: 10px; padding: 10px 14px;
+  transition: all .15s; min-width: 170px;
+}
+.mode-card strong { font-size: 13px; color: #9fb0c0; }
+.mode-card small  { font-size: 11px; color: #4a5568; }
+.mode-opt input[type="radio"]:checked + .mode-card {
+  border-color: #14b8a6;
+  background: rgba(20,184,166,.08);
+}
+.mode-opt input[type="radio"]:checked + .mode-card strong { color: #2dd4bf; }
+
 /* Responsive */
 @media (max-width: 500px) {
   .wrap { padding: 16px 10px 48px; }
