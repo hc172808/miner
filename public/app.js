@@ -71,7 +71,15 @@ async function refresh() {
       document.getElementById('cfgThreads').value = data.config.baseThreads ?? 0;
       document.getElementById('cfgOverclock').value = data.config.overclock ?? 1;
       document.getElementById('cfgBatch').value = data.config.batchSize ?? 20000;
+      document.getElementById('cfgCfId').value = '';   // never pre-fill secrets
       configLoaded = true;
+    }
+
+    // CF token status badge
+    const cfBadge = document.getElementById('cfTokenBadge');
+    if (cfBadge) {
+      cfBadge.textContent = data.config.hasCfToken ? '✓ CF Token set' : '✗ No CF Token';
+      cfBadge.style.color = data.config.hasCfToken ? '#2dd4bf' : '#f87171';
     }
 
     // Security notice when dashboard has no password
@@ -123,6 +131,10 @@ async function saveConfig() {
   };
   const pw = document.getElementById('cfgPassword').value;
   if (pw) body.webPassword = pw;
+  const cfId = document.getElementById('cfgCfId').value.trim();
+  const cfSecret = document.getElementById('cfgCfSecret').value;
+  if (cfId) body.cfClientId = cfId;
+  if (cfSecret) body.cfClientSecret = cfSecret;
 
   const result = await api('/api/config', { method: 'POST', body: JSON.stringify(body) });
   document.getElementById('configMessage').textContent = result.ok ? 'Saved.' : 'Failed to save.';

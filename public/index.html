@@ -95,6 +95,19 @@
             <input id="cfgPassword" type="password" placeholder="••••••••" />
           </label>
         </div>
+
+        <div class="cf-section">
+          <h3>Cloudflare Access <span class="muted">— required if your RPC is behind Cloudflare Zero Trust</span> <span id="cfTokenBadge" style="font-size:12px;margin-left:8px"></span></h3>
+          <div class="form-grid">
+          <label>CF-Access-Client-Id <span class="muted">(Service Token ID)</span>
+            <input id="cfgCfId" type="text" placeholder="xxxxxxxx.access" autocomplete="off" />
+          </label>
+          <label>CF-Access-Client-Secret <span class="muted">(leave blank to keep unchanged)</span>
+            <input id="cfgCfSecret" type="password" placeholder="••••••••" autocomplete="off" />
+          </label>
+          </div>
+        </div>
+        </div>
         <button class="btn primary" onclick="saveConfig()">Save Configuration</button>
         <p id="configMessage" class="muted"></p>
       </section>

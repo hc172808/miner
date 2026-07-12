@@ -53,6 +53,9 @@ function loadConfig() {
     overclock,
     webPort: Number.isFinite(raw.webPort) ? raw.webPort : 5000,
     webPassword: raw.webPassword || '',
+    // Cloudflare Access service token — required when the RPC is behind CF Access
+    cfClientId: raw.cfClientId || '',
+    cfClientSecret: raw.cfClientSecret || '',
   };
 }
 
@@ -67,6 +70,8 @@ function saveConfig(cfg) {
     overclock: cfg.overclock,
     webPort: cfg.webPort,
     webPassword: cfg.webPassword,
+    cfClientId: cfg.cfClientId || '',
+    cfClientSecret: cfg.cfClientSecret || '',
   };
   fs.writeFileSync(configPath, JSON.stringify(toWrite, null, 2));
 }
@@ -76,13 +81,25 @@ let config = loadConfig();
 // ── RPC client ───────────────────────────────────────────────────────────────
 let rpcId = 1;
 async function rpc(method, params) {
+  const headers = { 'Content-Type': 'application/json' };
+  // Attach Cloudflare Access service token if configured
+  if (config.cfClientId)     headers['CF-Access-Client-Id']     = config.cfClientId;
+  if (config.cfClientSecret) headers['CF-Access-Client-Secret'] = config.cfClientSecret;
+
   const res = await fetch(config.rpcEndpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ jsonrpc: '2.0', method, params, id: rpcId++ }),
     signal: AbortSignal.timeout(15000),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    // Cloudflare Access redirect (302/303) or login page (404 from CF) — surface a clear error
+    if (res.status === 302 || res.status === 403 || res.status === 404) {
+      const isAccess = res.headers.get('cf-mitigated') || (res.url || '').includes('cloudflareaccess.com');
+      if (isAccess || res.status === 302) throw new Error(`Blocked by Cloudflare Access — set CF Service Token in Configuration`);
+    }
+    throw new Error(`HTTP ${res.status}`);
+  }
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || 'RPC error');
   return data.result;
@@ -267,13 +284,14 @@ app.get('/api/status', requireAuth, (req, res) => {
       rpcEndpoint: config.rpcEndpoint,
       minerAddress: config.minerAddress,
       workerName: config.workerName,
-      baseThreads: config.baseThreads,         // raw (0 = auto); bound to the threads input
-      effectiveThreads: config.effectiveThreads, // computed; shown in system info only
+      baseThreads: config.baseThreads,
+      effectiveThreads: config.effectiveThreads,
       batchSize: config.batchSize,
       overclock: config.overclock,
       webPort: config.webPort,
       cpus: os.cpus().length,
       hasPassword: !!config.webPassword,
+      hasCfToken: !!(config.cfClientId && config.cfClientSecret),
     },
     system: {
       cpus: os.cpus().length,
@@ -312,6 +330,8 @@ app.post('/api/config', requireAuth, async (req, res) => {
   // baseThreads: 0 means auto. Accept 0 explicitly from dashboard "0 = auto" input.
   if (Number.isFinite(body.threads) && body.threads >= 0) config.baseThreads = Math.floor(body.threads);
   if (typeof body.webPassword === 'string') config.webPassword = body.webPassword;
+  if (typeof body.cfClientId === 'string') config.cfClientId = body.cfClientId.trim();
+  if (typeof body.cfClientSecret === 'string') config.cfClientSecret = body.cfClientSecret.trim();
 
   // Recompute effectiveThreads from raw values — identical formula as loadConfig.
   const resolvedBase = config.baseThreads > 0 ? config.baseThreads : cpuCount;

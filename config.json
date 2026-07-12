@@ -1,10 +1,12 @@
 {
-  "rpcEndpoint": "https://rpc.nelifegy.com",
-  "minerAddress": "",
+  "rpcEndpoint": "https://rpc.netlifegy.com",
+  "minerAddress": "0x73347241c342F0953fd38Cdef03C4dDD3a58D9b0",
   "workerName": "replit-rig-1",
   "threads": 0,
   "batchSize": 20000,
   "overclock": 1,
   "webPort": 5000,
-  "webPassword": ""
+  "webPassword": "Zxcvbnm90",
+  "cfClientId": "",
+  "cfClientSecret": ""
 }
