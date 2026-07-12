@@ -35,18 +35,40 @@ function loadConfig() {
     console.log(`[gyds-miner] Edit it (or use the web dashboard) to set your wallet address, then restart.`);
   }
   const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const cpuCount = os.cpus().length;
+  // baseThreads: 0 means "auto" (use all CPU cores). Stored as-is in config.json — never overwritten with the computed value.
+  const baseThreads = Number.isFinite(raw.threads) && raw.threads >= 0 ? Math.floor(raw.threads) : 0;
+  // overclock: multiplier applied at runtime only; 1 = no overclock.
+  const overclock = Number.isFinite(raw.overclock) && raw.overclock >= 0.5 ? raw.overclock : 1;
+  // effectiveThreads: computed once here, used to spawn workers. Never persisted.
+  const resolvedBase = baseThreads > 0 ? baseThreads : cpuCount;
+  const effectiveThreads = Math.max(1, Math.round(resolvedBase * overclock));
   return {
     rpcEndpoint: raw.rpcEndpoint || 'https://netlifegy.com/api/mining/rpc',
     minerAddress: raw.minerAddress || '',
     workerName: raw.workerName || os.hostname(),
-    threads: Number.isFinite(raw.threads) && raw.threads > 0 ? raw.threads : os.cpus().length,
-    webPort: Number.isFinite(raw.webPort) ? raw.webPort : 4500,
+    baseThreads,        // raw — what gets saved to disk (0 = auto)
+    effectiveThreads,   // derived — what gets spawned, never saved
+    batchSize: Number.isFinite(raw.batchSize) && raw.batchSize >= 100 ? Math.floor(raw.batchSize) : 20000,
+    overclock,
+    webPort: Number.isFinite(raw.webPort) ? raw.webPort : 5000,
     webPassword: raw.webPassword || '',
   };
 }
 
+/** Persist only the raw, non-derived fields. effectiveThreads is always recomputed on load. */
 function saveConfig(cfg) {
-  fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+  const toWrite = {
+    rpcEndpoint: cfg.rpcEndpoint,
+    minerAddress: cfg.minerAddress,
+    workerName: cfg.workerName,
+    threads: cfg.baseThreads,   // always save the raw base, never effectiveThreads
+    batchSize: cfg.batchSize,
+    overclock: cfg.overclock,
+    webPort: cfg.webPort,
+    webPassword: cfg.webPassword,
+  };
+  fs.writeFileSync(configPath, JSON.stringify(toWrite, null, 2));
 }
 
 let config = loadConfig();
@@ -94,15 +116,15 @@ function pushLog(line) {
 }
 
 function spawnWorkers() {
-  for (let i = 0; i < config.threads; i++) {
+  for (let i = 0; i < config.effectiveThreads; i++) {
     const worker = new Worker(path.join(__dirname, 'worker.js'), {
-      workerData: { minerAddress: config.minerAddress, job: state.currentJob },
+      workerData: { minerAddress: config.minerAddress, job: state.currentJob, batchSize: config.batchSize },
     });
     worker.on('message', (msg) => onWorkerMessage(worker, msg));
     worker.on('error', (err) => pushLog(`Worker ${i} error: ${err.message}`));
     state.workers.push(worker);
   }
-  pushLog(`Spawned ${config.threads} mining thread(s).`);
+  pushLog(`Spawned ${config.effectiveThreads} mining thread(s).`);
 }
 
 function stopWorkers() {
@@ -245,8 +267,12 @@ app.get('/api/status', requireAuth, (req, res) => {
       rpcEndpoint: config.rpcEndpoint,
       minerAddress: config.minerAddress,
       workerName: config.workerName,
-      threads: config.threads,
+      baseThreads: config.baseThreads,         // raw (0 = auto); bound to the threads input
+      effectiveThreads: config.effectiveThreads, // computed; shown in system info only
+      batchSize: config.batchSize,
+      overclock: config.overclock,
       webPort: config.webPort,
+      cpus: os.cpus().length,
       hasPassword: !!config.webPassword,
     },
     system: {
@@ -274,14 +300,26 @@ app.post('/api/config', requireAuth, async (req, res) => {
   const wasRunning = state.running;
   if (wasRunning) await stopMining();
 
-  const { rpcEndpoint, minerAddress, workerName, threads, webPassword } = req.body || {};
-  if (rpcEndpoint) config.rpcEndpoint = String(rpcEndpoint).trim();
-  if (minerAddress) config.minerAddress = String(minerAddress).trim();
-  if (workerName) config.workerName = String(workerName).trim();
-  if (Number.isFinite(threads) && threads > 0) config.threads = Math.min(threads, os.cpus().length * 2);
-  if (typeof webPassword === 'string') config.webPassword = webPassword;
+  const body = req.body || {};
+  const cpuCount = os.cpus().length;
+
+  // Update only the raw/stored fields — never write effectiveThreads back to config.
+  if (body.rpcEndpoint) config.rpcEndpoint = String(body.rpcEndpoint).trim();
+  if (body.minerAddress) config.minerAddress = String(body.minerAddress).trim();
+  if (body.workerName) config.workerName = String(body.workerName).trim();
+  if (Number.isFinite(body.batchSize) && body.batchSize >= 100) config.batchSize = Math.floor(body.batchSize);
+  if (Number.isFinite(body.overclock) && body.overclock >= 0.5) config.overclock = body.overclock;
+  // baseThreads: 0 means auto. Accept 0 explicitly from dashboard "0 = auto" input.
+  if (Number.isFinite(body.threads) && body.threads >= 0) config.baseThreads = Math.floor(body.threads);
+  if (typeof body.webPassword === 'string') config.webPassword = body.webPassword;
+
+  // Recompute effectiveThreads from raw values — identical formula as loadConfig.
+  const resolvedBase = config.baseThreads > 0 ? config.baseThreads : cpuCount;
+  config.effectiveThreads = Math.max(1, Math.round(resolvedBase * (config.overclock || 1)));
+
+  // Persist only the raw fields (saveConfig already does this correctly).
   saveConfig(config);
-  pushLog('Configuration updated via dashboard.');
+  pushLog(`Configuration updated: ${config.effectiveThreads} effective thread(s) (base=${config.baseThreads || 'auto'}, overclock=${config.overclock}×, batch=${config.batchSize}).`);
 
   if (wasRunning) await startMining();
   res.json({ ok: true, config });

@@ -1,6 +1,6 @@
 {
   "rpcEndpoint": "https://netlifegy.com/api/mining/rpc",
-  "minerAddress": "0xYourWalletAddressHere",
+  "minerAddress": "",
   "workerName": "replit-rig-1",
   "threads": 0,
   "batchSize": 20000,

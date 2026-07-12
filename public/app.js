@@ -67,14 +67,26 @@ async function refresh() {
       document.getElementById('cfgRpc').value = data.config.rpcEndpoint;
       document.getElementById('cfgAddress').value = data.config.minerAddress;
       document.getElementById('cfgWorker').value = data.config.workerName;
-      document.getElementById('cfgThreads').value = data.config.threads;
+      // Show baseThreads (raw, 0=auto) in the input — NOT effectiveThreads
+      document.getElementById('cfgThreads').value = data.config.baseThreads ?? 0;
+      document.getElementById('cfgOverclock').value = data.config.overclock ?? 1;
+      document.getElementById('cfgBatch').value = data.config.batchSize ?? 20000;
       configLoaded = true;
     }
 
+    // Security notice when dashboard has no password
+    const secNotice = document.getElementById('securityNotice');
+    if (secNotice) secNotice.style.display = data.config.hasPassword ? 'none' : 'block';
+
     const sys = data.system;
+    const cfg = data.config;
+    const isOC = cfg.overclock && cfg.overclock !== 1;
     document.getElementById('systemInfo').innerHTML = `
       <div>Platform <span>${sys.platform}</span></div>
-      <div>CPUs <span>${sys.cpus}</span></div>
+      <div>CPU Cores <span>${sys.cpus}</span></div>
+      <div>Active Threads <span>${cfg.effectiveThreads ?? cfg.cpus}</span></div>
+      <div>Overclock <span style="${isOC ? 'color:#f59e0b' : ''}">${isOC ? '⚡ ' : ''}${cfg.overclock ?? 1}×</span></div>
+      <div>Batch Size <span>${(cfg.batchSize ?? 20000).toLocaleString()}</span></div>
       <div>Load avg <span>${sys.loadavg.map(n => n.toFixed(2)).join(', ')}</span></div>
       <div>Memory <span>${sys.totalMemMb - sys.freeMemMb} / ${sys.totalMemMb} MB</span></div>
     `;
@@ -104,7 +116,10 @@ async function saveConfig() {
     rpcEndpoint: document.getElementById('cfgRpc').value.trim(),
     minerAddress: document.getElementById('cfgAddress').value.trim(),
     workerName: document.getElementById('cfgWorker').value.trim(),
-    threads: parseInt(document.getElementById('cfgThreads').value, 10),
+    // Send baseThreads (raw, 0=auto) — server recomputes effectiveThreads from this + overclock
+    threads: Math.max(0, parseInt(document.getElementById('cfgThreads').value, 10) || 0),
+    overclock: Math.max(0.5, parseFloat(document.getElementById('cfgOverclock').value) || 1),
+    batchSize: Math.max(100, parseInt(document.getElementById('cfgBatch').value, 10) || 20000),
   };
   const pw = document.getElementById('cfgPassword').value;
   if (pw) body.webPassword = pw;

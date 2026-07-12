@@ -6,6 +6,8 @@ const crypto = require('crypto');
 
 let job = workerData?.job || null;
 let minerAddress = workerData?.minerAddress || '';
+let batchSize = (Number.isFinite(workerData?.batchSize) && workerData.batchSize >= 100)
+  ? Math.floor(workerData.batchSize) : 20000;
 let running = true;
 let hashes = 0;
 
@@ -34,7 +36,6 @@ function mineLoop() {
   }
 
   const target = BigInt('0x' + job.target);
-  const batchSize = 20000;
   let nonce = BigInt(job.nonceStart || 0);
 
   for (let i = 0; i < batchSize && running; i++) {
@@ -64,6 +65,8 @@ parentPort.on('message', (msg) => {
     job = msg.job;
   } else if (msg.type === 'stop') {
     running = false;
+  } else if (msg.type === 'config') {
+    if (Number.isFinite(msg.batchSize) && msg.batchSize >= 100) batchSize = Math.floor(msg.batchSize);
   }
 });
 

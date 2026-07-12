@@ -66,6 +66,10 @@
         <p id="actionMessage" class="muted"></p>
       </section>
 
+      <div id="securityNotice" class="security-notice" style="display:none">
+        ⚠️ Dashboard is unprotected — anyone with this URL can control the miner. Set a <strong>Dashboard Password</strong> below.
+      </div>
+
       <section class="card">
         <h2>Configuration</h2>
         <div class="form-grid">
@@ -78,8 +82,14 @@
           <label>Worker Name
             <input id="cfgWorker" type="text" placeholder="ubuntu-rig-1" />
           </label>
-          <label>Threads
-            <input id="cfgThreads" type="number" min="1" />
+          <label>Threads <span class="muted">(0 = auto)</span>
+            <input id="cfgThreads" type="number" min="0" />
+          </label>
+          <label title="Multiply thread count beyond CPU cores. 1 = normal, 2 = 2× threads, etc.">Overclock Multiplier
+            <input id="cfgOverclock" type="number" min="0.5" step="0.5" />
+          </label>
+          <label title="Hashes computed per worker tick. Higher = more CPU usage per tick.">Batch Size <span class="muted">(default 20000)</span>
+            <input id="cfgBatch" type="number" min="100" step="1000" />
           </label>
           <label>Dashboard Password <span class="muted">(leave blank to keep unchanged)</span>
             <input id="cfgPassword" type="password" placeholder="••••••••" />
