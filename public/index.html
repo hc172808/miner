@@ -16,18 +16,23 @@
           <p id="hostLabel" class="muted">connecting…</p>
         </div>
       </div>
-      <div id="statusPill" class="pill pill-off">Stopped</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="reconnectBadge" class="badge badge-warn" style="display:none">⟳ Reconnecting…</span>
+        <div id="statusPill" class="pill pill-off">Stopped</div>
+      </div>
     </header>
 
     <div id="loginGate" class="card" style="display:none">
       <h2>Dashboard password</h2>
       <p class="muted">This miner is password-protected.</p>
-      <input id="passwordInput" type="password" placeholder="Password" />
+      <input id="passwordInput" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')submitPassword()" />
       <button class="btn primary" onclick="submitPassword()">Unlock</button>
       <p id="loginError" class="error"></p>
     </div>
 
     <main id="appMain" style="display:none">
+
+      <!-- Stats row -->
       <section class="grid">
         <div class="card stat">
           <span class="label">Hash Rate</span>
@@ -38,12 +43,12 @@
           <span id="validShares" class="value">0</span>
         </div>
         <div class="card stat">
-          <span class="label">Rejected Shares</span>
+          <span class="label">Rejected</span>
           <span id="rejectedShares" class="value">0</span>
         </div>
         <div class="card stat">
           <span class="label">Total Reward</span>
-          <span id="totalReward" class="value">0 GYDS</span>
+          <span id="totalReward" class="value">0</span>
         </div>
         <div class="card stat">
           <span class="label">Block Height</span>
@@ -55,72 +60,119 @@
         </div>
       </section>
 
+      <!-- Controls -->
       <section class="card">
         <div class="row-between">
-          <h2>Controls</h2>
+          <div>
+            <h2 style="margin-bottom:2px">Controls</h2>
+            <p id="activeCoinLabel" class="muted" style="margin:0">No coin selected</p>
+          </div>
           <div class="btn-group">
-            <button id="startBtn" class="btn primary" onclick="callAction('start')">Start Mining</button>
-            <button id="stopBtn" class="btn danger" onclick="callAction('stop')">Stop Mining</button>
+            <button id="startBtn" class="btn primary" onclick="callAction('start')">▶ Start Mining</button>
+            <button id="stopBtn"  class="btn danger"  onclick="callAction('stop')">■ Stop</button>
           </div>
         </div>
-        <p id="actionMessage" class="muted"></p>
+        <p id="actionMessage" class="muted" style="margin-top:8px"></p>
       </section>
 
+      <!-- Hash rate chart -->
+      <section class="card">
+        <div class="row-between" style="margin-bottom:10px">
+          <h2>Hash Rate</h2>
+          <div style="display:flex;gap:16px;font-size:13px;color:#9fb0c0">
+            <span>Efficiency: <strong id="effScore" style="color:#2dd4bf">—</strong></span>
+            <span>Per thread: <strong id="hpsPerThread" style="color:#2dd4bf">—</strong></span>
+          </div>
+        </div>
+        <canvas id="hashChart" height="90" style="width:100%;display:block"></canvas>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#4a5568;margin-top:4px">
+          <span>2 min ago</span><span>now</span>
+        </div>
+      </section>
+
+      <!-- Coins -->
+      <section class="card">
+        <div class="row-between" style="margin-bottom:12px">
+          <h2>Coins &amp; Wallets</h2>
+          <button class="btn primary" onclick="showAddCoin()">+ Add Coin</button>
+        </div>
+        <div id="coinList"></div>
+
+        <!-- Add coin form (hidden by default) -->
+        <div id="addCoinForm" style="display:none;margin-top:14px;border-top:1px solid #1e2733;padding-top:14px">
+          <h3 class="section-label">New Coin</h3>
+          <div class="form-grid">
+            <label>Wallet Address <span class="muted">(auto-detects coin type)</span>
+              <input id="newAddress" type="text" placeholder="0x… or bc1… or custom"
+                     oninput="detectCoinFromInput(this.value)" />
+            </label>
+            <label>Detected / Name
+              <input id="newName" type="text" placeholder="GYDS" />
+            </label>
+            <label>Symbol
+              <input id="newSymbol" type="text" placeholder="GYDS" style="max-width:120px" />
+            </label>
+            <label>RPC Endpoint <span class="muted">(mining node URL)</span>
+              <input id="newRpc" type="text" placeholder="https://netlifegy.com/api/mining/rpc" />
+            </label>
+            <label>CF-Access-Client-Id <span class="muted">(if behind Cloudflare)</span>
+              <input id="newCfId" type="text" placeholder="optional" autocomplete="off" />
+            </label>
+            <label>CF-Access-Client-Secret
+              <input id="newCfSecret" type="password" placeholder="optional" autocomplete="off" />
+            </label>
+          </div>
+          <div class="btn-group" style="margin-top:10px">
+            <button class="btn primary" onclick="addCoin()">Add Coin</button>
+            <button class="btn" onclick="hideAddCoin()">Cancel</button>
+          </div>
+          <p id="addCoinMsg" class="muted" style="margin-top:6px"></p>
+        </div>
+      </section>
+
+      <!-- Mining settings -->
       <div id="securityNotice" class="security-notice" style="display:none">
         ⚠️ Dashboard is unprotected — anyone with this URL can control the miner. Set a <strong>Dashboard Password</strong> below.
       </div>
 
       <section class="card">
-        <h2>Configuration</h2>
+        <h2>Mining Settings</h2>
         <div class="form-grid">
-          <label>RPC Endpoint <span class="muted">(your GYDS node / Cloudflare URL)</span>
-            <input id="cfgRpc" type="text" placeholder="https://rpc.nelifegy.com" />
-          </label>
-          <label>Miner Wallet Address
-            <input id="cfgAddress" type="text" placeholder="0x..." />
-          </label>
           <label>Worker Name
-            <input id="cfgWorker" type="text" placeholder="ubuntu-rig-1" />
+            <input id="cfgWorker" type="text" placeholder="my-rig" />
           </label>
           <label>Threads <span class="muted">(0 = auto)</span>
             <input id="cfgThreads" type="number" min="0" />
           </label>
-          <label title="Multiply thread count beyond CPU cores. 1 = normal, 2 = 2× threads, etc.">Overclock Multiplier
+          <label title="Multiplier on thread count. 2 = double threads.">Overclock Multiplier
             <input id="cfgOverclock" type="number" min="0.5" step="0.5" />
           </label>
-          <label title="Hashes computed per worker tick. Higher = more CPU usage per tick.">Batch Size <span class="muted">(default 20000)</span>
+          <label title="Hashes per worker tick. Higher = more CPU per tick.">Batch Size <span class="muted">(default 20000)</span>
             <input id="cfgBatch" type="number" min="100" step="1000" />
           </label>
-          <label>Dashboard Password <span class="muted">(leave blank to keep unchanged)</span>
+          <label>Dashboard Password <span class="muted">(blank = keep current)</span>
             <input id="cfgPassword" type="password" placeholder="••••••••" />
           </label>
         </div>
-
-        <div class="cf-section">
-          <h3>Cloudflare Access <span class="muted">— required if your RPC is behind Cloudflare Zero Trust</span> <span id="cfTokenBadge" style="font-size:12px;margin-left:8px"></span></h3>
-          <div class="form-grid">
-          <label>CF-Access-Client-Id <span class="muted">(Service Token ID)</span>
-            <input id="cfgCfId" type="text" placeholder="xxxxxxxx.access" autocomplete="off" />
-          </label>
-          <label>CF-Access-Client-Secret <span class="muted">(leave blank to keep unchanged)</span>
-            <input id="cfgCfSecret" type="password" placeholder="••••••••" autocomplete="off" />
-          </label>
-          </div>
-        </div>
-        </div>
-        <button class="btn primary" onclick="saveConfig()">Save Configuration</button>
-        <p id="configMessage" class="muted"></p>
+        <button class="btn primary" onclick="saveConfig()">Save Settings</button>
+        <p id="configMessage" class="muted" style="margin-top:6px"></p>
       </section>
 
+      <!-- System -->
       <section class="card">
         <h2>System</h2>
         <div id="systemInfo" class="system-grid"></div>
       </section>
 
+      <!-- Log -->
       <section class="card">
-        <h2>Activity Log</h2>
+        <div class="row-between" style="margin-bottom:8px">
+          <h2>Activity Log</h2>
+          <button class="btn" style="font-size:12px;padding:4px 10px" onclick="document.getElementById('logBox').textContent=''">Clear</button>
+        </div>
         <pre id="logBox" class="log-box"></pre>
       </section>
+
     </main>
   </div>
   <script src="app.js"></script>
