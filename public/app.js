@@ -372,12 +372,39 @@ async function refresh() {
   }
 }
 
+async function testConnection() {
+  const btn = document.getElementById('testBtn');
+  const msg = document.getElementById('actionMessage');
+  btn.disabled = true;
+  btn.textContent = '🔌 Testing…';
+  msg.textContent = 'Probing RPC…';
+  msg.style.color = '#9fb0c0';
+  try {
+    const r = await api('/api/test-rpc', { method: 'POST' });
+    if (r.ok) {
+      msg.textContent = `✓ Connected to ${r.coin.name} (${r.latency} ms)` +
+        (r.serverInfo ? ` — server: ${JSON.stringify(r.serverInfo)}` : '');
+      msg.style.color = '#2dd4bf';
+    } else {
+      msg.textContent = `✗ ${r.coin ? r.coin.name + ': ' : ''}${r.error}`;
+      msg.style.color = '#f87171';
+    }
+  } catch (e) {
+    msg.textContent = '✗ Test failed: ' + e.message;
+    msg.style.color = '#f87171';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔌 Test Connection';
+  }
+}
+
 async function callAction(action) {
   document.getElementById('startBtn').disabled = true;
   document.getElementById('stopBtn').disabled  = true;
   try {
     const result = await api('/api/' + action, { method: 'POST' });
     document.getElementById('actionMessage').textContent = result.message || '';
+    document.getElementById('actionMessage').style.color = result.ok ? '#9fb0c0' : '#f87171';
   } finally { refresh(); }
 }
 

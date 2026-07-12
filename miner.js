@@ -148,27 +148,109 @@ function activeCoin() {
   return config.coins.find(c => c.id === config.activeCoinId) || config.coins[0] || null;
 }
 
+function validateRpcUrl(endpoint) {
+  if (!endpoint) throw new Error('No RPC endpoint set for this coin.');
+  let url;
+  try { url = new URL(endpoint); } catch { throw new Error(`Invalid RPC URL: "${endpoint}"`); }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(
+      `Protocol "${url.protocol.replace(':','')}://" is not supported by this miner.\n` +
+      `This miner uses JSON-RPC over HTTP/HTTPS.\n` +
+      `Stratum (stratum+tcp://, stratum+ssl://) and other protocols are not supported.\n` +
+      `Use an HTTP-based mining pool endpoint instead.`
+    );
+  }
+}
+
 async function rpc(method, params) {
   const coin = activeCoin();
   if (!coin) throw new Error('No coin configured. Add a coin in the dashboard first.');
+  validateRpcUrl(coin.rpcEndpoint);
+
   const headers = { 'Content-Type': 'application/json' };
   if (coin.cfClientId)     headers['CF-Access-Client-Id']     = coin.cfClientId;
   if (coin.cfClientSecret) headers['CF-Access-Client-Secret'] = coin.cfClientSecret;
 
-  const res = await fetch(coin.rpcEndpoint, {
-    method: 'POST', headers,
-    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: rpcId++ }),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) {
-    if (res.status === 302 || res.status === 403) {
-      throw new Error('Blocked by Cloudflare Access — set CF Service Token for this coin in the dashboard.');
-    }
-    throw new Error(`HTTP ${res.status}`);
+  let res;
+  try {
+    res = await fetch(coin.rpcEndpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({ jsonrpc: '2.0', method, params, id: rpcId++ }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (err) {
+    const msg = err.name === 'TimeoutError' || err.name === 'AbortError'
+      ? `RPC timed out after 15 s — is "${coin.rpcEndpoint}" reachable?`
+      : `Cannot reach RPC at "${coin.rpcEndpoint}" — server may be down or URL is wrong. (${err.message})`;
+    throw new Error(msg);
   }
-  const data = await res.json();
+
+  // If fetch followed a redirect, check where we landed
+  if (res.redirected) {
+    const finalUrl = res.url || '';
+    if (finalUrl.includes('cloudflareaccess.com')) {
+      throw new Error('Blocked by Cloudflare Access — enter your CF Service Token for this coin in the dashboard.');
+    }
+  }
+
+  // HTML response means we hit a login/portal page, not the JSON-RPC endpoint
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('text/html')) {
+    throw new Error('RPC returned an HTML page — likely redirected to Cloudflare Access or a login portal. Set the CF Service Token for this coin.');
+  }
+
+  if (res.status === 401) throw new Error('RPC returned 401 Unauthorized — check credentials.');
+  if (res.status === 403) throw new Error('RPC returned 403 Forbidden — firewall or Cloudflare is blocking.');
+  if (!res.ok) throw new Error(`RPC returned HTTP ${res.status}.`);
+
+  let data;
+  try { data = await res.json(); }
+  catch { throw new Error('RPC response is not valid JSON — wrong endpoint or server error.'); }
   if (data.error) throw new Error(data.error.message || 'RPC error');
   return data.result;
+}
+
+// ── RPC connectivity probe (used by /api/test-rpc) ────────────────────────────
+async function probeRpc(coin) {
+  if (!coin) return { ok: false, error: 'No coin provided.' };
+  try { validateRpcUrl(coin.rpcEndpoint); } catch (e) { return { ok: false, error: e.message, latency: 0 }; }
+  const headers = { 'Content-Type': 'application/json' };
+  if (coin.cfClientId)     headers['CF-Access-Client-Id']     = coin.cfClientId;
+  if (coin.cfClientSecret) headers['CF-Access-Client-Secret'] = coin.cfClientSecret;
+  const t0 = Date.now();
+  try {
+    const res = await fetch(coin.rpcEndpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'mining_getInfo', params: {}, id: 0 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const latency = Date.now() - t0;
+
+    // Detect CF Access redirect by final URL or content-type
+    if (res.redirected) {
+      const finalUrl = res.url || '';
+      if (finalUrl.includes('cloudflareaccess.com')) {
+        return { ok: false, error: 'Blocked by Cloudflare Access — enter CF Service Token for this coin.', latency };
+      }
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('text/html')) {
+      return { ok: false, error: 'Server returned HTML (login/redirect page) — likely Cloudflare Access. Set CF Service Token.', latency };
+    }
+    if (res.status === 401) return { ok: false, error: '401 Unauthorized — check credentials.', status: 401, latency };
+    if (res.status === 403) return { ok: false, error: '403 Forbidden — firewall or CF blocking.', status: 403, latency };
+    if (!res.ok)            return { ok: false, error: `HTTP ${res.status}`, status: res.status, latency };
+    let body;
+    try { body = await res.json(); } catch { body = null; }
+    // Even a JSON-RPC error response means the server is alive and talking our protocol
+    return { ok: true, latency, status: res.status, serverInfo: body?.result || null };
+  } catch (err) {
+    const latency = Date.now() - t0;
+    const error = err.name === 'TimeoutError' || err.name === 'AbortError'
+      ? 'Timed out after 10 s — server unreachable or too slow.'
+      : `Network error: ${err.message}`;
+    return { ok: false, error, latency };
+  }
 }
 
 // ── Miner state ───────────────────────────────────────────────────────────────
@@ -460,6 +542,7 @@ app.get('/api/coins', requireAuth, (req, res) => {
 app.post('/api/coins', requireAuth, (req, res) => {
   const { walletAddress, rpcEndpoint, name, symbol, cfClientId, cfClientSecret, miningMode } = req.body || {};
   if (!walletAddress || !rpcEndpoint) return res.status(400).json({ error: 'walletAddress and rpcEndpoint are required.' });
+  try { validateRpcUrl(rpcEndpoint); } catch (e) { return res.status(400).json({ error: e.message }); }
   const detected = detectCoin(walletAddress);
   const coin = {
     id:            crypto.randomUUID(),
@@ -525,6 +608,17 @@ app.get('/api/coin-presets', requireAuth, (req, res) => {
   res.json({ presets: COIN_PRESETS });
 });
 
+// Test RPC connectivity for a coin (defaults to active coin)
+app.post('/api/test-rpc', requireAuth, async (req, res) => {
+  const { coinId } = req.body || {};
+  const coin = coinId
+    ? config.coins.find(c => c.id === coinId)
+    : activeCoin();
+  if (!coin) return res.json({ ok: false, error: 'No coin found.' });
+  const result = await probeRpc(coin);
+  res.json({ coin: { id: coin.id, name: coin.name, symbol: coin.symbol }, ...result });
+});
+
 // ── General config ────────────────────────────────────────────────────────────
 app.post('/api/start',  requireAuth, async (req, res) => res.json(await startMining()));
 app.post('/api/stop',   requireAuth, async (req, res) => res.json(await stopMining()));
@@ -561,9 +655,10 @@ process.on('SIGINT',  async () => { await stopMining(); process.exit(0); });
 process.on('SIGTERM', async () => { await stopMining(); process.exit(0); });
 
 // Auto-start if a coin with a wallet address is configured
+// Small delay lets the network interface settle before the first outbound connection
 const coin = activeCoin();
 if (coin?.walletAddress) {
-  startMining();
+  setTimeout(() => startMining(), 2000);
 } else {
   pushLog('No coin configured yet — open the dashboard to add one and start mining.');
 }
