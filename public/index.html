@@ -19,15 +19,20 @@
       <div style="display:flex;align-items:center;gap:10px">
         <span id="reconnectBadge" class="badge badge-warn" style="display:none">⟳ Reconnecting…</span>
         <div id="statusPill" class="pill pill-off">Stopped</div>
+        <button id="logoutBtn" class="btn ghost sm" onclick="logout()" style="display:none">Log Out</button>
       </div>
     </header>
 
-    <div id="loginGate" class="card" style="display:none">
-      <h2>Dashboard password</h2>
-      <p class="muted">This miner is password-protected.</p>
-      <input id="passwordInput" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')submitPassword()" />
-      <button class="btn primary" onclick="submitPassword()">Unlock</button>
-      <p id="loginError" class="error"></p>
+    <!-- Login gate -->
+    <div id="loginGate" class="card login-card" style="display:none">
+      <div class="login-logo">⛏</div>
+      <h2 style="color:#e6edf3;text-transform:none;letter-spacing:0;font-size:18px;margin-bottom:4px">GYDS Miner</h2>
+      <p class="muted" style="margin-bottom:20px">Enter your dashboard password to continue.</p>
+      <input id="passwordInput" type="password" placeholder="Password"
+             onkeydown="if(event.key==='Enter')submitPassword()" style="max-width:280px" />
+      <button class="btn primary" onclick="submitPassword()" style="max-width:280px">Unlock Dashboard</button>
+      <p id="loginError" class="error" style="margin-top:8px"></p>
+      <p class="muted" style="font-size:11px;margin-top:16px">The miner continues running in the background regardless of login status.</p>
     </div>
 
     <main id="appMain" style="display:none">
@@ -65,7 +70,7 @@
         <div class="row-between">
           <div>
             <h2 style="margin-bottom:2px">Controls</h2>
-            <p id="activeCoinLabel" class="muted" style="margin:0">No coin selected</p>
+            <p id="activeCoinLabel" class="muted" style="margin:0">GYDS Network</p>
           </div>
           <div class="btn-group">
             <button id="startBtn" class="btn primary" onclick="callAction('start')">▶ Start Mining</button>
@@ -91,74 +96,51 @@
         </div>
       </section>
 
-      <!-- Coins -->
+      <!-- GYDS Wallet Settings -->
       <section class="card">
-        <div class="row-between" style="margin-bottom:12px">
-          <h2>Coins &amp; Wallets</h2>
-          <button class="btn primary" onclick="showAddCoin()">+ Add Coin</button>
+        <div class="row-between" style="margin-bottom:14px">
+          <h2>GYDS Wallet Settings</h2>
+          <span id="walletModeBadge" class="mode-badge pool">🏊 Pool</span>
         </div>
-        <div id="coinList"></div>
 
-        <!-- Add coin form (hidden by default) -->
-        <div id="addCoinForm" style="display:none;margin-top:14px;border-top:1px solid #1e2733;padding-top:14px">
-          <h3 class="section-label">New Coin</h3>
-
-          <!-- Preset picker row -->
-          <div style="margin-bottom:14px">
-            <label class="preset-label">Quick-pick a network
-              <div id="presetGrid" class="preset-grid"></div>
-            </label>
-          </div>
-
-          <div class="form-grid">
-            <label>Wallet Address <span class="muted">(auto-detects chain)</span>
-              <input id="newAddress" type="text" placeholder="0x… / SOL… / addr1…"
-                     oninput="detectCoinFromInput(this.value)" />
-            </label>
-            <label>Name
-              <input id="newName" type="text" placeholder="GYDS" />
-            </label>
-            <label>Symbol
-              <input id="newSymbol" type="text" placeholder="GYDS" style="max-width:120px" />
-            </label>
-            <label>RPC Endpoint <span class="muted">(mining node URL)</span>
-              <input id="newRpc" type="text" placeholder="https://…" />
-            </label>
-            <label>CF-Access-Client-Id <span class="muted">(if behind Cloudflare)</span>
-              <input id="newCfId" type="text" placeholder="optional" autocomplete="off" />
-            </label>
-            <label>CF-Access-Client-Secret
-              <input id="newCfSecret" type="password" placeholder="optional" autocomplete="off" />
-            </label>
-          </div>
-
-          <!-- Solo / Pool toggle -->
-          <div style="margin-top:14px">
-            <span class="section-label" style="display:block;margin-bottom:8px">Mining Mode</span>
-            <div class="mode-toggle">
-              <label class="mode-opt">
-                <input type="radio" name="newMode" value="pool" checked />
-                <span class="mode-card">
-                  <strong>🏊 Pool Mining</strong>
-                  <small>Join a pool — share rewards, steady income</small>
-                </span>
-              </label>
-              <label class="mode-opt">
-                <input type="radio" name="newMode" value="solo" />
-                <span class="mode-card">
-                  <strong>🎯 Solo Mining</strong>
-                  <small>Mine alone — rare but full block reward</small>
-                </span>
-              </label>
-            </div>
-          </div>
-
-          <div class="btn-group" style="margin-top:12px">
-            <button class="btn primary" onclick="addCoin()">Add Coin</button>
-            <button class="btn" onclick="hideAddCoin()">Cancel</button>
-          </div>
-          <p id="addCoinMsg" class="muted" style="margin-top:6px"></p>
+        <div class="form-grid">
+          <label style="grid-column:1/-1">Wallet Address
+            <input id="wltAddress" type="text" placeholder="0x…" />
+          </label>
+          <label style="grid-column:1/-1">RPC Endpoint <span class="muted">(GYDS mining node URL)</span>
+            <input id="wltRpc" type="text" placeholder="https://netlifegy.com/api/mining/rpc" />
+          </label>
+          <label>CF-Access-Client-Id <span class="muted">(if behind Cloudflare)</span>
+            <input id="wltCfId" type="text" placeholder="optional" autocomplete="off" />
+          </label>
+          <label>CF-Access-Client-Secret
+            <input id="wltCfSecret" type="password" placeholder="optional" autocomplete="off" />
+          </label>
         </div>
+
+        <!-- Solo / Pool toggle -->
+        <div style="margin-top:4px;margin-bottom:14px">
+          <span class="section-label" style="display:block;margin-bottom:8px">Mining Mode</span>
+          <div class="mode-toggle">
+            <label class="mode-opt">
+              <input type="radio" name="wltMode" value="pool" checked />
+              <span class="mode-card">
+                <strong>🏊 Pool Mining</strong>
+                <small>Join a pool — share rewards, steady income</small>
+              </span>
+            </label>
+            <label class="mode-opt">
+              <input type="radio" name="wltMode" value="solo" />
+              <span class="mode-card">
+                <strong>🎯 Solo Mining</strong>
+                <small>Mine alone — rare but full block reward</small>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <button class="btn primary" onclick="saveWallet()">Save Wallet Settings</button>
+        <p id="walletMessage" class="muted" style="margin-top:6px"></p>
       </section>
 
       <!-- Mining settings -->
@@ -189,6 +171,18 @@
         <p id="configMessage" class="muted" style="margin-top:6px"></p>
       </section>
 
+      <!-- Session -->
+      <section class="card">
+        <div class="row-between">
+          <div>
+            <h2 style="margin-bottom:2px">Session</h2>
+            <p class="muted" style="margin:0">Auto-logout after 15 minutes of inactivity. The miner keeps running.</p>
+          </div>
+          <button class="btn ghost" onclick="logout()">Log Out</button>
+        </div>
+        <p id="sessionTimer" class="muted" style="margin-top:8px;font-size:12px"></p>
+      </section>
+
       <!-- System -->
       <section class="card">
         <h2>System</h2>
@@ -199,7 +193,8 @@
       <section class="card">
         <div class="row-between" style="margin-bottom:8px">
           <h2>Activity Log</h2>
-          <button class="btn" style="font-size:12px;padding:4px 10px" onclick="document.getElementById('logBox').textContent=''">Clear</button>
+          <button class="btn" style="font-size:12px;padding:4px 10px"
+                  onclick="document.getElementById('logBox').textContent=''">Clear</button>
         </div>
         <pre id="logBox" class="log-box"></pre>
       </section>

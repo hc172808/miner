@@ -1,26 +1,60 @@
-// ── Auth ──────────────────────────────────────────────────────────────────────
-let password = localStorage.getItem('gyds_miner_password') || '';
+// ── Session / Auth ────────────────────────────────────────────────────────────
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-function authHeaders() { return password ? { 'x-miner-password': password } : {}; }
+let password      = localStorage.getItem('gyds_pw')         || '';
+let lastActivity  = parseInt(localStorage.getItem('gyds_last_activity') || '0', 10);
+
+function touchActivity() {
+  lastActivity = Date.now();
+  localStorage.setItem('gyds_last_activity', lastActivity);
+}
+
+function isSessionExpired() {
+  if (!password) return false; // not logged in — nothing to expire
+  return lastActivity > 0 && (Date.now() - lastActivity) > SESSION_TIMEOUT_MS;
+}
+
+function logout() {
+  password = '';
+  lastActivity = 0;
+  localStorage.removeItem('gyds_pw');
+  localStorage.removeItem('gyds_last_activity');
+  showLoginGate();
+}
+
+function showLoginGate() {
+  document.getElementById('loginGate').style.display  = 'block';
+  document.getElementById('appMain').style.display    = 'none';
+  document.getElementById('logoutBtn').style.display  = 'none';
+}
+
+function submitPassword() {
+  const val = document.getElementById('passwordInput').value;
+  if (!val) return;
+  password = val;
+  localStorage.setItem('gyds_pw', password);
+  touchActivity();
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('passwordInput').value    = '';
+  refresh();
+}
+
+function authHeaders() {
+  return password ? { 'x-miner-password': password } : {};
+}
 
 async function api(path, opts = {}) {
+  touchActivity();
   const res = await fetch(path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(opts.headers || {}) },
   });
   if (res.status === 401) {
-    document.getElementById('loginGate').style.display = 'block';
-    document.getElementById('appMain').style.display   = 'none';
+    if (password) document.getElementById('loginError').textContent = 'Wrong password.';
+    showLoginGate();
     throw new Error('unauthorized');
   }
   return res.json();
-}
-
-function submitPassword() {
-  password = document.getElementById('passwordInput').value;
-  localStorage.setItem('gyds_miner_password', password);
-  document.getElementById('loginError').textContent = '';
-  refresh();
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -36,16 +70,26 @@ function fmtUptime(sec) {
   return `${h}h ${m}m ${s}s`;
 }
 
-function truncate(str, n) { return str && str.length > n ? str.slice(0, n) + '…' : str; }
+function fmtCountdown(ms) {
+  if (ms <= 0) return 'Session expired';
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60), s = total % 60;
+  return `Auto-logout in ${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
+function escHtml(s) {
+  if (typeof s !== 'string') s = JSON.stringify(s);
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 // ── Hash rate chart ───────────────────────────────────────────────────────────
 function drawChart(history) {
   const canvas = document.getElementById('hashChart');
   if (!canvas) return;
-  const ctx   = canvas.getContext('2d');
-  const dpr   = window.devicePixelRatio || 1;
-  const w     = canvas.offsetWidth  || 640;
-  const h     = canvas.offsetHeight || 90;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w   = canvas.offsetWidth  || 640;
+  const h   = canvas.offsetHeight || 90;
   canvas.width  = w * dpr;
   canvas.height = h * dpr;
   ctx.scale(dpr, dpr);
@@ -62,7 +106,6 @@ function drawChart(history) {
   const max = Math.max(...history.map(s => s.hr), 1);
   const pad = 4;
 
-  // Fill area
   ctx.beginPath();
   history.forEach((s, i) => {
     const x = pad + (i / (history.length - 1)) * (w - pad * 2);
@@ -78,7 +121,6 @@ function drawChart(history) {
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // Line
   ctx.beginPath();
   history.forEach((s, i) => {
     const x = pad + (i / (history.length - 1)) * (w - pad * 2);
@@ -90,7 +132,6 @@ function drawChart(history) {
   ctx.lineJoin    = 'round';
   ctx.stroke();
 
-  // Peak label
   const peakIdx = history.reduce((best, s, i) => s.hr > history[best].hr ? i : best, 0);
   const px = pad + (peakIdx / (history.length - 1)) * (w - pad * 2);
   const py = (h - pad) - (history[peakIdx].hr / max) * (h - pad * 2);
@@ -100,185 +141,123 @@ function drawChart(history) {
   ctx.fillText(fmtHashRate(history[peakIdx].hr), px, Math.max(py - 4, 12));
 }
 
-// ── Coin presets ──────────────────────────────────────────────────────────────
-let coinPresets = [];
-let selectedPreset = null;
+// ── Wallet settings form ──────────────────────────────────────────────────────
+let walletFormLoaded = false;
 
-async function loadPresets() {
-  try {
-    const r = await api('/api/coin-presets');
-    coinPresets = r.presets || [];
-    renderPresetGrid();
-  } catch {}
+function fillWalletForm(wallet) {
+  if (walletFormLoaded) return;
+  document.getElementById('wltAddress').value  = wallet.walletAddress || '';
+  document.getElementById('wltRpc').value      = wallet.rpcEndpoint   || '';
+  document.getElementById('wltCfId').value     = wallet.cfClientId    || '';
+  const mode = wallet.miningMode || 'pool';
+  const radio = document.querySelector(`input[name="wltMode"][value="${mode}"]`);
+  if (radio) radio.checked = true;
+  walletFormLoaded = true;
 }
 
-function renderPresetGrid() {
-  const grid = document.getElementById('presetGrid');
-  if (!grid || !coinPresets.length) return;
-  grid.innerHTML = coinPresets.map(p => `
-    <button type="button" class="preset-chip" data-symbol="${escHtml(p.symbol)}"
-            onclick="selectPreset(${escHtml(JSON.stringify(p))})">
-      ${escHtml(p.symbol)}
-    </button>
-  `).join('');
-}
-
-function selectPreset(preset) {
-  if (typeof preset === 'string') preset = JSON.parse(preset);
-  selectedPreset = preset;
-
-  // Highlight chip
-  document.querySelectorAll('.preset-chip').forEach(el => {
-    el.classList.toggle('selected', el.dataset.symbol === preset.symbol);
-  });
-
-  // Fill form fields (only if not manually edited — or always for name/symbol)
-  const nameEl   = document.getElementById('newName');
-  const symbolEl = document.getElementById('newSymbol');
-  const rpcEl    = document.getElementById('newRpc');
-
-  nameEl.value   = preset.name;
-  symbolEl.value = preset.symbol;
-  if (preset.suggestedRpc) rpcEl.value = preset.suggestedRpc;
-
-  // Clear touched flags so auto-detect still works after picking a preset
-  delete nameEl.dataset.touched;
-  delete symbolEl.dataset.touched;
-  if (preset.suggestedRpc) delete rpcEl.dataset.touched;
-}
-
-// ── Coin management UI ────────────────────────────────────────────────────────
-let coinsCache = [];
-let activeCoinId = null;
-
-function renderCoins(coins, activeId) {
-  coinsCache   = coins;
-  activeCoinId = activeId;
-  const el = document.getElementById('coinList');
-  if (!coins || coins.length === 0) {
-    el.innerHTML = '<p class="muted" style="text-align:center;padding:16px">No coins added yet. Click + Add Coin to get started.</p>';
-    return;
-  }
-  el.innerHTML = coins.map(c => {
-    const isActive = c.id === activeId;
-    const mode     = c.miningMode || 'pool';
-    const modeBadge = `<span class="mode-badge ${mode}">${mode === 'solo' ? '🎯 Solo' : '🏊 Pool'}</span>`;
-    return `
-    <div class="coin-item${isActive ? ' active' : ''}">
-      <div class="coin-symbol">${(c.symbol || '?').slice(0, 5)}</div>
-      <div class="coin-info">
-        <div class="coin-name">
-          ${escHtml(c.name)}
-          ${modeBadge}
-          ${isActive ? '<span class="active-tag">● ACTIVE</span>' : ''}
-        </div>
-        <div class="coin-addr" title="${escHtml(c.walletAddress)}">${escHtml(c.walletAddress)}</div>
-        <div class="coin-rpc"  title="${escHtml(c.rpcEndpoint)}">${escHtml(c.rpcEndpoint)}</div>
-      </div>
-      <div class="coin-actions">
-        ${!isActive ? `<button class="btn sm primary" onclick="activateCoin('${c.id}')">Use</button>` : ''}
-        <button class="btn sm ghost" onclick="deleteCoin('${c.id}','${escHtml(c.name)}')">✕</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function escHtml(s) {
-  if (typeof s !== 'string') s = JSON.stringify(s);
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-async function activateCoin(id) {
-  await api(`/api/coins/${id}/activate`, { method: 'POST' });
-  refresh();
-}
-
-async function deleteCoin(id, name) {
-  if (!confirm(`Remove coin "${name}"?`)) return;
-  await api(`/api/coins/${id}`, { method: 'DELETE' });
-  refresh();
-}
-
-function showAddCoin() {
-  document.getElementById('addCoinForm').style.display = 'block';
-  // Load presets lazily the first time form is opened
-  if (!coinPresets.length) loadPresets();
-}
-function hideAddCoin() {
-  document.getElementById('addCoinForm').style.display = 'none';
-  document.getElementById('addCoinMsg').textContent = '';
-}
-
-async function detectCoinFromInput(address) {
-  if (!address || address.length < 8) return;
-  try {
-    const r = await api('/api/detect-coin', { method: 'POST', body: JSON.stringify({ walletAddress: address }) });
-    if (r.name && r.name !== 'Unknown') {
-      const nameEl   = document.getElementById('newName');
-      const symbolEl = document.getElementById('newSymbol');
-      const rpcEl    = document.getElementById('newRpc');
-      if (!nameEl.dataset.touched)   nameEl.value   = r.name;
-      if (!symbolEl.dataset.touched) symbolEl.value = r.symbol;
-      if (!rpcEl.dataset.touched && r.suggestedRpc) rpcEl.value = r.suggestedRpc;
-    }
-  } catch {}
-}
-
-// mark as user-edited so auto-detect doesn't overwrite
-['newName','newSymbol','newRpc'].forEach(id => {
-  document.addEventListener('DOMContentLoaded', () => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', () => { el.dataset.touched = '1'; });
-  });
-});
-
-function getSelectedMode() {
-  const checked = document.querySelector('input[name="newMode"]:checked');
-  return checked ? checked.value : 'pool';
-}
-
-async function addCoin() {
+async function saveWallet() {
   const body = {
-    walletAddress: document.getElementById('newAddress').value.trim(),
-    rpcEndpoint:   document.getElementById('newRpc').value.trim(),
-    name:          document.getElementById('newName').value.trim(),
-    symbol:        document.getElementById('newSymbol').value.trim(),
-    cfClientId:    document.getElementById('newCfId').value.trim(),
-    cfClientSecret:document.getElementById('newCfSecret').value,
-    miningMode:    getSelectedMode(),
+    walletAddress:  document.getElementById('wltAddress').value.trim(),
+    rpcEndpoint:    document.getElementById('wltRpc').value.trim(),
+    cfClientId:     document.getElementById('wltCfId').value.trim(),
+    cfClientSecret: document.getElementById('wltCfSecret').value,
+    miningMode:     document.querySelector('input[name="wltMode"]:checked')?.value || 'pool',
   };
-  if (!body.walletAddress || !body.rpcEndpoint) {
-    document.getElementById('addCoinMsg').textContent = 'Wallet address and RPC endpoint are required.';
-    return;
+  const msgEl = document.getElementById('walletMessage');
+  msgEl.textContent = 'Saving…';
+  msgEl.style.color = '#9fb0c0';
+  try {
+    const r = await api('/api/wallet', { method: 'POST', body: JSON.stringify(body) });
+    if (r.ok) {
+      msgEl.textContent = '✓ Wallet settings saved.';
+      msgEl.style.color = '#2dd4bf';
+      walletFormLoaded = false; // re-populate on next refresh
+      document.getElementById('wltCfSecret').value = '';
+    } else {
+      msgEl.textContent = '✗ ' + (r.error || 'Failed to save.');
+      msgEl.style.color = '#f87171';
+    }
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      msgEl.textContent = '✗ ' + e.message;
+      msgEl.style.color = '#f87171';
+    }
   }
-  const r = await api('/api/coins', { method: 'POST', body: JSON.stringify(body) });
-  if (r.ok) {
-    // reset form
-    ['newAddress','newName','newSymbol','newRpc','newCfId','newCfSecret'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) { el.value = ''; delete el.dataset.touched; }
-    });
-    // Reset mode to pool
-    const poolRadio = document.querySelector('input[name="newMode"][value="pool"]');
-    if (poolRadio) poolRadio.checked = true;
-    // Reset preset selection
-    selectedPreset = null;
-    document.querySelectorAll('.preset-chip').forEach(el => el.classList.remove('selected'));
-    hideAddCoin();
-    refresh();
-  } else {
-    document.getElementById('addCoinMsg').textContent = r.error || 'Failed to add coin.';
+  refresh();
+}
+
+// ── Mining settings form ──────────────────────────────────────────────────────
+let configLoaded = false;
+
+async function saveConfig() {
+  const body = {
+    workerName: document.getElementById('cfgWorker').value.trim(),
+    threads:    Math.max(0, parseInt(document.getElementById('cfgThreads').value, 10)    || 0),
+    overclock:  Math.max(0.5, parseFloat(document.getElementById('cfgOverclock').value) || 1),
+    batchSize:  Math.max(100, parseInt(document.getElementById('cfgBatch').value, 10)   || 20000),
+  };
+  const pw = document.getElementById('cfgPassword').value;
+  if (pw) body.webPassword = pw;
+  const r = await api('/api/config', { method: 'POST', body: JSON.stringify(body) });
+  document.getElementById('configMessage').textContent = r.ok ? '✓ Saved.' : '✗ Failed to save.';
+  document.getElementById('cfgPassword').value = '';
+  configLoaded = false;
+  refresh();
+}
+
+// ── Mining controls ───────────────────────────────────────────────────────────
+async function callAction(action) {
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('stopBtn').disabled  = true;
+  try {
+    const result = await api('/api/' + action, { method: 'POST' });
+    document.getElementById('actionMessage').textContent  = result.message || '';
+    document.getElementById('actionMessage').style.color  = result.ok ? '#9fb0c0' : '#f87171';
+  } finally { refresh(); }
+}
+
+async function testConnection() {
+  const btn = document.getElementById('testBtn');
+  const msg = document.getElementById('actionMessage');
+  btn.disabled    = true;
+  btn.textContent = '🔌 Testing…';
+  msg.textContent = 'Probing RPC…';
+  msg.style.color = '#9fb0c0';
+  try {
+    const r = await api('/api/test-rpc', { method: 'POST' });
+    if (r.ok) {
+      msg.textContent = `✓ Connected (${r.latency} ms)` +
+        (r.serverInfo ? ` — server: ${JSON.stringify(r.serverInfo)}` : '');
+      msg.style.color = '#2dd4bf';
+    } else {
+      msg.textContent = `✗ ${r.error}`;
+      msg.style.color = '#f87171';
+    }
+  } catch (e) {
+    msg.textContent = '✗ Test failed: ' + e.message;
+    msg.style.color = '#f87171';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '🔌 Test Connection';
   }
 }
 
 // ── Main refresh loop ─────────────────────────────────────────────────────────
-let configLoaded = false;
-
 async function refresh() {
+  // Check session timeout first
+  if (isSessionExpired()) { logout(); return; }
+
   try {
     const data = await api('/api/status');
+
+    // Show main app
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('appMain').style.display   = 'block';
+    document.getElementById('logoutBtn').style.display = config?.webPassword !== false ? 'block' : 'none';
+
+    // Show logout button when password is set
+    document.getElementById('logoutBtn').style.display =
+      data.config.hasPassword ? 'block' : 'none';
 
     // Header
     document.getElementById('hostLabel').textContent =
@@ -298,19 +277,19 @@ async function refresh() {
     document.getElementById('hashRate').textContent      = fmtHashRate(data.hashRate);
     document.getElementById('validShares').textContent   = data.validShares;
     document.getElementById('rejectedShares').textContent= data.rejectedShares;
-    document.getElementById('totalReward').textContent   =
-      data.totalReward.toFixed(4) + (data.activeCoin ? ' ' + data.activeCoin.symbol : '');
+    document.getElementById('totalReward').textContent   = data.totalReward.toFixed(4) + ' GYDS';
     document.getElementById('blockHeight').textContent   = data.blockHeight || '—';
     document.getElementById('uptime').textContent        = fmtUptime(data.uptime);
 
-    // Active coin label
-    const acl = document.getElementById('activeCoinLabel');
-    if (data.activeCoin) {
-      const mode = data.activeCoin.miningMode || 'pool';
-      acl.textContent = `Active: ${data.activeCoin.name} (${data.activeCoin.symbol}) · ${mode === 'solo' ? '🎯 Solo' : '🏊 Pool'}`;
-    } else {
-      acl.textContent = 'No coin selected — add one below';
-    }
+    // Controls label
+    const mode = data.wallet?.miningMode || 'pool';
+    document.getElementById('activeCoinLabel').textContent =
+      `GYDS Network · ${mode === 'solo' ? '🎯 Solo' : '🏊 Pool'}`;
+
+    // Mode badge
+    const mb = document.getElementById('walletModeBadge');
+    mb.textContent = mode === 'solo' ? '🎯 Solo' : '🏊 Pool';
+    mb.className   = `mode-badge ${mode}`;
 
     // Buttons
     document.getElementById('startBtn').disabled = data.running || data.reconnecting;
@@ -320,20 +299,20 @@ async function refresh() {
     drawChart(data.hashHistory);
 
     // Efficiency
-    const eff = data.efficiency;
-    document.getElementById('effScore').textContent    = eff.effScore    ? fmtHashRate(eff.effScore) + ' / load' : '—';
-    document.getElementById('hpsPerThread').textContent= eff.hpsPerThread? fmtHashRate(eff.hpsPerThread) + ' / thread' : '—';
+    document.getElementById('effScore').textContent    =
+      data.efficiency.effScore     ? fmtHashRate(data.efficiency.effScore)    + ' / load'   : '—';
+    document.getElementById('hpsPerThread').textContent=
+      data.efficiency.hpsPerThread ? fmtHashRate(data.efficiency.hpsPerThread) + ' / thread' : '—';
 
-    // Coin list
-    const cr = await api('/api/coins');
-    renderCoins(cr.coins, cr.activeCoinId);
+    // Wallet form (fill once)
+    if (!walletFormLoaded && data.wallet) fillWalletForm(data.wallet);
 
-    // Config form (only fill once)
+    // Config form (fill once)
     if (!configLoaded) {
-      document.getElementById('cfgWorker').value  = data.config.workerName;
-      document.getElementById('cfgThreads').value = data.config.baseThreads ?? 0;
-      document.getElementById('cfgOverclock').value= data.config.overclock ?? 1;
-      document.getElementById('cfgBatch').value   = data.config.batchSize ?? 20000;
+      document.getElementById('cfgWorker').value   = data.config.workerName;
+      document.getElementById('cfgThreads').value  = data.config.baseThreads ?? 0;
+      document.getElementById('cfgOverclock').value= data.config.overclock   ?? 1;
+      document.getElementById('cfgBatch').value    = data.config.batchSize   ?? 20000;
       configLoaded = true;
     }
 
@@ -341,22 +320,25 @@ async function refresh() {
     const sn = document.getElementById('securityNotice');
     if (sn) sn.style.display = data.config.hasPassword ? 'none' : 'block';
 
+    // Session countdown
+    const remaining = SESSION_TIMEOUT_MS - (Date.now() - lastActivity);
+    document.getElementById('sessionTimer').textContent = fmtCountdown(remaining);
+
     // System info
-    const sys = data.system;
-    const cfg = data.config;
+    const sys = data.system, cfg = data.config;
     const isOC = cfg.overclock && cfg.overclock !== 1;
     document.getElementById('systemInfo').innerHTML = [
-      ['Platform',        sys.platform],
-      ['CPU Cores',       sys.cpus],
-      ['Active Threads',  cfg.effectiveThreads ?? sys.cpus],
-      ['Overclock',       (isOC ? '⚡ ' : '') + (cfg.overclock ?? 1) + '×'],
-      ['Batch Size',      (cfg.batchSize ?? 20000).toLocaleString()],
-      ['Load avg',        sys.loadavg.map(n => n.toFixed(2)).join(', ')],
-      ['Memory',          `${sys.totalMemMb - sys.freeMemMb} / ${sys.totalMemMb} MB`],
+      ['Platform',       sys.platform],
+      ['CPU Cores',      sys.cpus],
+      ['Active Threads', cfg.effectiveThreads ?? sys.cpus],
+      ['Overclock',      (isOC ? '⚡ ' : '') + (cfg.overclock ?? 1) + '×'],
+      ['Batch Size',     (cfg.batchSize ?? 20000).toLocaleString()],
+      ['Load avg',       sys.loadavg.map(n => n.toFixed(2)).join(', ')],
+      ['Memory',         `${sys.totalMemMb - sys.freeMemMb} / ${sys.totalMemMb} MB`],
     ].map(([k, v]) => `
       <div>
         <div class="sys-label">${k}</div>
-        <div class="sys-val" style="${k==='Overclock'&&isOC?'color:#f59e0b':''}">${v}</div>
+        <div class="sys-val" style="${k === 'Overclock' && isOC ? 'color:#f59e0b' : ''}">${v}</div>
       </div>`).join('');
 
     // Log
@@ -372,58 +354,20 @@ async function refresh() {
   }
 }
 
-async function testConnection() {
-  const btn = document.getElementById('testBtn');
-  const msg = document.getElementById('actionMessage');
-  btn.disabled = true;
-  btn.textContent = '🔌 Testing…';
-  msg.textContent = 'Probing RPC…';
-  msg.style.color = '#9fb0c0';
-  try {
-    const r = await api('/api/test-rpc', { method: 'POST' });
-    if (r.ok) {
-      msg.textContent = `✓ Connected to ${r.coin.name} (${r.latency} ms)` +
-        (r.serverInfo ? ` — server: ${JSON.stringify(r.serverInfo)}` : '');
-      msg.style.color = '#2dd4bf';
-    } else {
-      msg.textContent = `✗ ${r.coin ? r.coin.name + ': ' : ''}${r.error}`;
-      msg.style.color = '#f87171';
-    }
-  } catch (e) {
-    msg.textContent = '✗ Test failed: ' + e.message;
-    msg.style.color = '#f87171';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔌 Test Connection';
-  }
-}
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Reset walletFormLoaded on page load so form always gets pre-filled once
+walletFormLoaded = false;
 
-async function callAction(action) {
-  document.getElementById('startBtn').disabled = true;
-  document.getElementById('stopBtn').disabled  = true;
-  try {
-    const result = await api('/api/' + action, { method: 'POST' });
-    document.getElementById('actionMessage').textContent = result.message || '';
-    document.getElementById('actionMessage').style.color = result.ok ? '#9fb0c0' : '#f87171';
-  } finally { refresh(); }
-}
-
-async function saveConfig() {
-  const body = {
-    workerName: document.getElementById('cfgWorker').value.trim(),
-    threads:    Math.max(0, parseInt(document.getElementById('cfgThreads').value, 10) || 0),
-    overclock:  Math.max(0.5, parseFloat(document.getElementById('cfgOverclock').value) || 1),
-    batchSize:  Math.max(100, parseInt(document.getElementById('cfgBatch').value, 10) || 20000),
-  };
-  const pw = document.getElementById('cfgPassword').value;
-  if (pw) body.webPassword = pw;
-  const r = await api('/api/config', { method: 'POST', body: JSON.stringify(body) });
-  document.getElementById('configMessage').textContent = r.ok ? '✓ Saved.' : '✗ Failed to save.';
-  document.getElementById('cfgPassword').value = '';
-  configLoaded = false; // re-populate form with updated values
+// Check for expired session on load
+if (isSessionExpired()) {
+  logout();
+} else {
   refresh();
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-refresh();
 setInterval(refresh, 3000);
+
+// Reset inactivity timer on any user interaction
+['click', 'keydown', 'mousemove', 'touchstart'].forEach(evt =>
+  document.addEventListener(evt, touchActivity, { passive: true })
+);

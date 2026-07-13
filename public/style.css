@@ -52,7 +52,8 @@ h3 { margin: 0 0 8px; font-size: 12px; }
 .btn.primary { background: #14b8a6; color: #04120f; }
 .btn.danger  { background: #ef4444; color: #200404; }
 .btn.sm      { padding: 5px 10px; font-size: 12px; }
-.btn.ghost   { background: transparent; border: 1px solid #1e2733; }
+.btn.ghost   { background: transparent; border: 1px solid #2d3748; color: #9fb0c0; }
+.btn.ghost:hover { border-color: #14b8a6; color: #2dd4bf; }
 
 /* Forms */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 14px; }
@@ -63,25 +64,19 @@ input, select {
 }
 input:focus, select:focus { outline: none; border-color: #14b8a6; }
 
-/* Coin list */
-.coin-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 12px; border-radius: 10px; margin-bottom: 8px;
-  border: 1px solid #1e2733; background: #0d1117;
-  gap: 10px;
+/* Login card */
+.login-card {
+  max-width: 380px; margin: 80px auto 0;
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;
 }
-.coin-item.active { border-color: #14b8a6; background: rgba(20,184,166,.06); }
-.coin-symbol {
-  width: 36px; height: 36px; border-radius: 8px; background: #1e2733;
+.login-logo {
+  width: 64px; height: 64px; border-radius: 18px;
+  background: linear-gradient(135deg, #14b8a6, #0d9488);
   display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 12px; color: #2dd4bf; flex-shrink: 0;
+  font-size: 32px; margin-bottom: 8px;
 }
-.coin-info { flex: 1; min-width: 0; }
-.coin-name { font-size: 14px; font-weight: 600; }
-.coin-addr { font-size: 11px; color: #7d8b99; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.coin-rpc  { font-size: 11px; color: #4a5568; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.coin-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.active-tag { font-size: 11px; color: #14b8a6; font-weight: 600; }
+.login-card input  { max-width: 280px; width: 100%; }
+.login-card .btn   { max-width: 280px; width: 100%; }
 
 /* Chart */
 #hashChart { background: #0a0e14; border-radius: 8px; border: 1px solid #1e2733; }
@@ -106,7 +101,7 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
   font-size: 13px; color: #fbbf24;
 }
 
-/* Coin mode badge */
+/* Mode badge */
 .mode-badge {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
@@ -114,19 +109,6 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
 }
 .mode-badge.pool { background: rgba(99,102,241,.18); color: #818cf8; }
 .mode-badge.solo { background: rgba(245,158,11,.18); color: #fbbf24; }
-
-/* Preset grid */
-.preset-label { font-size: 12px; color: #9fb0c0; text-transform: uppercase; letter-spacing: .04em; }
-.preset-grid {
-  display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px;
-}
-.preset-chip {
-  border: 1px solid #1e2733; background: #0d1117; border-radius: 8px;
-  padding: 5px 10px; font-size: 12px; font-weight: 600; color: #9fb0c0;
-  cursor: pointer; transition: all .15s;
-}
-.preset-chip:hover    { border-color: #14b8a6; color: #2dd4bf; }
-.preset-chip.selected { border-color: #14b8a6; color: #2dd4bf; background: rgba(20,184,166,.08); }
 
 /* Solo / Pool toggle */
 .mode-toggle { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -140,10 +122,7 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
 }
 .mode-card strong { font-size: 13px; color: #9fb0c0; }
 .mode-card small  { font-size: 11px; color: #4a5568; }
-.mode-opt input[type="radio"]:checked + .mode-card {
-  border-color: #14b8a6;
-  background: rgba(20,184,166,.08);
-}
+.mode-opt input[type="radio"]:checked + .mode-card { border-color: #14b8a6; background: rgba(20,184,166,.08); }
 .mode-opt input[type="radio"]:checked + .mode-card strong { color: #2dd4bf; }
 
 /* Responsive */
@@ -151,4 +130,5 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
   .wrap { padding: 16px 10px 48px; }
   .value { font-size: 18px; }
   .grid { grid-template-columns: repeat(2, 1fr); }
+  .login-card { margin-top: 40px; }
 }

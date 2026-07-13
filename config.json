@@ -1,28 +1,10 @@
 {
-  "coins": [
-    {
-      "miningMode": "pool",
-      "id": "default",
-      "name": "GYDS",
-      "symbol": "GYDS",
-      "walletAddress": "0x73347241c342F0953fd38Cdef03C4dDD3a58D9b0",
-      "rpcEndpoint": "https://rpc.netlifegy.com",
-      "cfClientId": "",
-      "cfClientSecret": ""
-    },
-    {
-      "miningMode": "pool",
-      "id": "7c7c4c76-a83c-4c7f-9eb6-838afb63c068",
-      "name": "SOL",
-      "symbol": "CUSTOM",
-      "walletAddress": "5D6T5qyaLS9kDgyMDU87vwbjfQSPkUG4r1ko8Es3D6yj",
-      "rpcEndpoint": "stratum+tcp://rx.unmineable.com:3333",
-      "cfClientId": "",
-      "cfClientSecret": ""
-    }
-  ],
-  "activeCoinId": "7c7c4c76-a83c-4c7f-9eb6-838afb63c068",
-  "workerName": "replit-rig-1",
+  "walletAddress": "",
+  "rpcEndpoint": "https://netlifegy.com/api/mining/rpc",
+  "cfClientId": "",
+  "cfClientSecret": "",
+  "miningMode": "pool",
+  "workerName": "gyds-rig",
   "threads": 0,
   "overclock": 1,
   "batchSize": 20000,
