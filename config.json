@@ -1,9 +1,9 @@
 {
-  "walletAddress": "",
-  "rpcEndpoint": "https://netlifegy.com/api/mining/rpc",
+  "walletAddress": "0x73347241c342F0953fd38Cdef03C4dDD3a58D9b0",
+  "rpcEndpoint": "",
   "cfClientId": "",
   "cfClientSecret": "",
-  "miningMode": "pool",
+  "miningMode": "solo",
   "workerName": "gyds-rig",
   "threads": 0,
   "overclock": 1,

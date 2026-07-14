@@ -15,7 +15,6 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 }
 h1 { margin: 0; font-size: 20px; }
 h2 { margin: 0 0 12px; font-size: 13px; color: #9fb0c0; text-transform: uppercase; letter-spacing: .05em; }
-h3 { margin: 0 0 8px; font-size: 12px; }
 .section-label { font-size: 12px; color: #9fb0c0; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
 .muted { color: #7d8b99; font-size: 13px; margin: 4px 0 0; }
 .error { color: #f87171; font-size: 13px; }
@@ -27,6 +26,7 @@ h3 { margin: 0 0 8px; font-size: 12px; }
 .badge { display: inline-flex; align-items: center; gap: 4px;
          padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .badge-warn { background: rgba(245,158,11,.15); color: #fbbf24; }
+.badge-err  { background: rgba(239,68,68,.15);  color: #f87171; }
 
 /* Cards */
 .card {
@@ -37,6 +37,45 @@ h3 { margin: 0 0 8px; font-size: 12px; }
 .stat { display: flex; flex-direction: column; gap: 6px; }
 .label { font-size: 11px; color: #7d8b99; text-transform: uppercase; letter-spacing: .05em; }
 .value { font-size: 22px; font-weight: 700; color: #2dd4bf; }
+
+/* Lifetime stats grid */
+.lifetime-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px; font-size: 13px; color: #9fb0c0;
+}
+.lifetime-grid div { display: flex; flex-direction: column; gap: 3px; }
+
+/* Notices */
+.notice-err {
+  background: rgba(239,68,68,.10); border: 1px solid rgba(239,68,68,.30);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; color: #f87171;
+}
+.security-notice {
+  background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.30);
+  border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;
+  font-size: 13px; color: #fbbf24;
+}
+
+/* Server-offline overlay */
+.offline-overlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(10,14,20,.92);
+  display: flex; align-items: center; justify-content: center;
+}
+.offline-box {
+  background: #111721; border: 1px solid #ef4444; border-radius: 16px;
+  padding: 32px 40px; text-align: center; max-width: 380px;
+}
+.offline-box h3 { margin: 12px 0 6px; font-size: 18px; color: #f87171; }
+.offline-box p  { margin: 4px 0; }
+
+/* Spinner */
+.spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid #1e2733; border-top-color: #14b8a6;
+  animation: spin .9s linear infinite; margin: 16px auto 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Layout helpers */
 .row-between { display: flex; align-items: center; justify-content: space-between; }
@@ -75,30 +114,23 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
   display: flex; align-items: center; justify-content: center;
   font-size: 32px; margin-bottom: 8px;
 }
-.login-card input  { max-width: 280px; width: 100%; }
-.login-card .btn   { max-width: 280px; width: 100%; }
+.login-card input { max-width: 280px; width: 100%; }
+.login-card .btn  { max-width: 280px; width: 100%; }
 
 /* Chart */
 #hashChart { background: #0a0e14; border-radius: 8px; border: 1px solid #1e2733; }
 
-/* System grid */
+/* System & lifetime grids */
 .system-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 13px; color: #9fb0c0; }
-.system-grid div { display: flex; flex-direction: column; gap: 2px; }
-.system-grid .sys-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-.system-grid .sys-val   { font-size: 15px; font-weight: 600; color: #e6edf3; }
+.system-grid div, .lifetime-grid div { display: flex; flex-direction: column; gap: 2px; }
+.sys-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #7d8b99; }
+.sys-val   { font-size: 15px; font-weight: 600; color: #e6edf3; }
 
 /* Log */
 .log-box {
   background: #0a0e14; border: 1px solid #1e2733; border-radius: 8px;
   padding: 12px; max-height: 220px; overflow-y: auto; font-size: 11px;
   color: #9fb0c0; white-space: pre-wrap; word-break: break-all; margin: 0;
-}
-
-/* Notices */
-.security-notice {
-  background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.30);
-  border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;
-  font-size: 13px; color: #fbbf24;
 }
 
 /* Mode badge */
@@ -131,4 +163,5 @@ input:focus, select:focus { outline: none; border-color: #14b8a6; }
   .value { font-size: 18px; }
   .grid { grid-template-columns: repeat(2, 1fr); }
   .login-card { margin-top: 40px; }
+  .offline-box { padding: 24px 20px; margin: 16px; }
 }

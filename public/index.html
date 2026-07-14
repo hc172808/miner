@@ -7,6 +7,18 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+  <!-- Server-offline overlay -->
+  <div id="offlineOverlay" class="offline-overlay" style="display:none">
+    <div class="offline-box">
+      <div style="font-size:36px">⚠️</div>
+      <h3>Server Unreachable</h3>
+      <p id="offlineMsg">Cannot connect to the miner process.</p>
+      <p class="muted" style="font-size:12px">The miner may have crashed or restarted. Retrying…</p>
+      <div id="offlineSpinner" class="spinner"></div>
+    </div>
+  </div>
+
   <div class="wrap">
     <header>
       <div class="brand">
@@ -18,6 +30,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span id="reconnectBadge" class="badge badge-warn" style="display:none">⟳ Reconnecting…</span>
+        <span id="circuitBadge"   class="badge badge-err"  style="display:none">⛔ Stopped</span>
         <div id="statusPill" class="pill pill-off">Stopped</div>
         <button id="logoutBtn" class="btn ghost sm" onclick="logout()" style="display:none">Log Out</button>
       </div>
@@ -37,7 +50,7 @@
 
     <main id="appMain" style="display:none">
 
-      <!-- Stats row -->
+      <!-- Stats row — this session -->
       <section class="grid">
         <div class="card stat">
           <span class="label">Hash Rate</span>
@@ -52,7 +65,7 @@
           <span id="rejectedShares" class="value">0</span>
         </div>
         <div class="card stat">
-          <span class="label">Total Reward</span>
+          <span class="label">Session Reward</span>
           <span id="totalReward" class="value">0</span>
         </div>
         <div class="card stat">
@@ -62,6 +75,37 @@
         <div class="card stat">
           <span class="label">Uptime</span>
           <span id="uptime" class="value">0s</span>
+        </div>
+      </section>
+
+      <!-- Lifetime stats -->
+      <section class="card">
+        <h2>Lifetime Stats</h2>
+        <div class="lifetime-grid">
+          <div>
+            <div class="sys-label">Total Shares</div>
+            <div class="sys-val" id="ltShares">—</div>
+          </div>
+          <div>
+            <div class="sys-label">Total Rejected</div>
+            <div class="sys-val" id="ltRejected">—</div>
+          </div>
+          <div>
+            <div class="sys-label">Total Reward</div>
+            <div class="sys-val" id="ltReward">—</div>
+          </div>
+          <div>
+            <div class="sys-label">Mining Time</div>
+            <div class="sys-val" id="ltTime">—</div>
+          </div>
+          <div>
+            <div class="sys-label">Sessions</div>
+            <div class="sys-val" id="ltSessions">—</div>
+          </div>
+          <div>
+            <div class="sys-label">First Started</div>
+            <div class="sys-val" id="ltFirst">—</div>
+          </div>
         </div>
       </section>
 
@@ -79,6 +123,15 @@
           </div>
         </div>
         <p id="actionMessage" class="muted" style="margin-top:8px"></p>
+        <!-- Reconnect countdown -->
+        <div id="reconnectCountdown" style="display:none;margin-top:6px;font-size:12px;color:#fbbf24">
+          ⟳ Next reconnect attempt in <strong id="reconnectSec">—</strong>s
+          (<span id="reconnectAttemptLabel">0</span> / 20)
+        </div>
+        <!-- Circuit breaker alert -->
+        <div id="circuitAlert" class="notice-err" style="display:none;margin-top:8px">
+          ⛔ Auto-reconnect gave up after 20 failed attempts. Click <strong>▶ Start Mining</strong> to try again manually.
+        </div>
       </section>
 
       <!-- Hash rate chart -->
@@ -86,7 +139,7 @@
         <div class="row-between" style="margin-bottom:10px">
           <h2>Hash Rate</h2>
           <div style="display:flex;gap:16px;font-size:13px;color:#9fb0c0">
-            <span>Efficiency: <strong id="effScore" style="color:#2dd4bf">—</strong></span>
+            <span>Efficiency: <strong id="effScore"     style="color:#2dd4bf">—</strong></span>
             <span>Per thread: <strong id="hpsPerThread" style="color:#2dd4bf">—</strong></span>
           </div>
         </div>
@@ -118,7 +171,6 @@
           </label>
         </div>
 
-        <!-- Solo / Pool toggle -->
         <div style="margin-top:4px;margin-bottom:14px">
           <span class="section-label" style="display:block;margin-bottom:8px">Mining Mode</span>
           <div class="mode-toggle">
@@ -145,7 +197,8 @@
 
       <!-- Mining settings -->
       <div id="securityNotice" class="security-notice" style="display:none">
-        ⚠️ Dashboard is unprotected — anyone with this URL can control the miner. Set a <strong>Dashboard Password</strong> below.
+        ⚠️ Dashboard is unprotected — anyone with this URL can control the miner.
+        Set a <strong>Dashboard Password</strong> below.
       </div>
 
       <section class="card">
@@ -162,6 +215,10 @@
           </label>
           <label title="Hashes per worker tick. Higher = more CPU per tick.">Batch Size <span class="muted">(default 20000)</span>
             <input id="cfgBatch" type="number" min="100" step="1000" />
+          </label>
+          <label title="Milliseconds to sleep between batches. 0 = max speed. 50 = ~50% CPU.">
+            CPU Throttle Delay <span class="muted">(ms between batches, 0 = off)</span>
+            <input id="cfgBatchDelay" type="number" min="0" step="10" />
           </label>
           <label>Dashboard Password <span class="muted">(blank = keep current)</span>
             <input id="cfgPassword" type="password" placeholder="••••••••" />

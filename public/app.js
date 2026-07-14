@@ -1,8 +1,8 @@
 // ── Session / Auth ────────────────────────────────────────────────────────────
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-let password      = localStorage.getItem('gyds_pw')         || '';
-let lastActivity  = parseInt(localStorage.getItem('gyds_last_activity') || '0', 10);
+let password     = localStorage.getItem('gyds_pw') || '';
+let lastActivity = parseInt(localStorage.getItem('gyds_last_activity') || '0', 10);
 
 function touchActivity() {
   lastActivity = Date.now();
@@ -10,13 +10,12 @@ function touchActivity() {
 }
 
 function isSessionExpired() {
-  if (!password) return false; // not logged in — nothing to expire
+  if (!password) return false;
   return lastActivity > 0 && (Date.now() - lastActivity) > SESSION_TIMEOUT_MS;
 }
 
 function logout() {
-  password = '';
-  lastActivity = 0;
+  password = ''; lastActivity = 0;
   localStorage.removeItem('gyds_pw');
   localStorage.removeItem('gyds_last_activity');
   showLoginGate();
@@ -34,14 +33,12 @@ function submitPassword() {
   password = val;
   localStorage.setItem('gyds_pw', password);
   touchActivity();
-  document.getElementById('loginError').textContent = '';
-  document.getElementById('passwordInput').value    = '';
+  document.getElementById('loginError').textContent   = '';
+  document.getElementById('passwordInput').value      = '';
   refresh();
 }
 
-function authHeaders() {
-  return password ? { 'x-miner-password': password } : {};
-}
+function authHeaders() { return password ? { 'x-miner-password': password } : {}; }
 
 async function api(path, opts = {}) {
   touchActivity();
@@ -54,7 +51,26 @@ async function api(path, opts = {}) {
     showLoginGate();
     throw new Error('unauthorized');
   }
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}));
+    document.getElementById('loginError').textContent = data.error || 'Too many attempts. Try later.';
+    showLoginGate();
+    throw new Error('rate-limited');
+  }
   return res.json();
+}
+
+// ── Server-offline overlay ────────────────────────────────────────────────────
+let serverOnline  = true;
+let offlineSince  = null;
+let offlineTimer  = null;
+
+function showOffline(msg) {
+  document.getElementById('offlineMsg').textContent = msg || 'Cannot connect to the miner process.';
+  document.getElementById('offlineOverlay').style.display = 'flex';
+}
+function hideOffline() {
+  document.getElementById('offlineOverlay').style.display = 'none';
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -70,11 +86,23 @@ function fmtUptime(sec) {
   return `${h}h ${m}m ${s}s`;
 }
 
+function fmtSeconds(sec) {
+  if (sec < 60)   return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
 function fmtCountdown(ms) {
   if (ms <= 0) return 'Session expired';
   const total = Math.floor(ms / 1000);
   const m = Math.floor(total / 60), s = total % 60;
   return `Auto-logout in ${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
 }
 
 function escHtml(s) {
@@ -141,15 +169,15 @@ function drawChart(history) {
   ctx.fillText(fmtHashRate(history[peakIdx].hr), px, Math.max(py - 4, 12));
 }
 
-// ── Wallet settings form ──────────────────────────────────────────────────────
+// ── Wallet form ───────────────────────────────────────────────────────────────
 let walletFormLoaded = false;
 
 function fillWalletForm(wallet) {
   if (walletFormLoaded) return;
-  document.getElementById('wltAddress').value  = wallet.walletAddress || '';
-  document.getElementById('wltRpc').value      = wallet.rpcEndpoint   || '';
-  document.getElementById('wltCfId').value     = wallet.cfClientId    || '';
-  const mode = wallet.miningMode || 'pool';
+  document.getElementById('wltAddress').value = wallet.walletAddress || '';
+  document.getElementById('wltRpc').value     = wallet.rpcEndpoint   || '';
+  document.getElementById('wltCfId').value    = wallet.cfClientId    || '';
+  const mode  = wallet.miningMode || 'pool';
   const radio = document.querySelector(`input[name="wltMode"][value="${mode}"]`);
   if (radio) radio.checked = true;
   walletFormLoaded = true;
@@ -164,24 +192,20 @@ async function saveWallet() {
     miningMode:     document.querySelector('input[name="wltMode"]:checked')?.value || 'pool',
   };
   const msgEl = document.getElementById('walletMessage');
-  msgEl.textContent = 'Saving…';
-  msgEl.style.color = '#9fb0c0';
+  msgEl.textContent = 'Saving…'; msgEl.style.color = '#9fb0c0';
   try {
     const r = await api('/api/wallet', { method: 'POST', body: JSON.stringify(body) });
     if (r.ok) {
       msgEl.textContent = '✓ Wallet settings saved.';
       msgEl.style.color = '#2dd4bf';
-      walletFormLoaded = false; // re-populate on next refresh
+      walletFormLoaded = false;
       document.getElementById('wltCfSecret').value = '';
     } else {
       msgEl.textContent = '✗ ' + (r.error || 'Failed to save.');
       msgEl.style.color = '#f87171';
     }
   } catch (e) {
-    if (e.message !== 'unauthorized') {
-      msgEl.textContent = '✗ ' + e.message;
-      msgEl.style.color = '#f87171';
-    }
+    if (e.message !== 'unauthorized') { msgEl.textContent = '✗ ' + e.message; msgEl.style.color = '#f87171'; }
   }
   refresh();
 }
@@ -191,15 +215,16 @@ let configLoaded = false;
 
 async function saveConfig() {
   const body = {
-    workerName: document.getElementById('cfgWorker').value.trim(),
-    threads:    Math.max(0, parseInt(document.getElementById('cfgThreads').value, 10)    || 0),
-    overclock:  Math.max(0.5, parseFloat(document.getElementById('cfgOverclock').value) || 1),
-    batchSize:  Math.max(100, parseInt(document.getElementById('cfgBatch').value, 10)   || 20000),
+    workerName:   document.getElementById('cfgWorker').value.trim(),
+    threads:      Math.max(0,   parseInt(document.getElementById('cfgThreads').value,    10) || 0),
+    overclock:    Math.max(0.5, parseFloat(document.getElementById('cfgOverclock').value)    || 1),
+    batchSize:    Math.max(100, parseInt(document.getElementById('cfgBatch').value,       10) || 20000),
+    batchDelayMs: Math.max(0,   parseInt(document.getElementById('cfgBatchDelay').value,  10) || 0),
   };
   const pw = document.getElementById('cfgPassword').value;
   if (pw) body.webPassword = pw;
   const r = await api('/api/config', { method: 'POST', body: JSON.stringify(body) });
-  document.getElementById('configMessage').textContent = r.ok ? '✓ Saved.' : '✗ Failed to save.';
+  document.getElementById('configMessage').textContent = r.ok ? '✓ Saved.' : '✗ Failed.';
   document.getElementById('cfgPassword').value = '';
   configLoaded = false;
   refresh();
@@ -211,18 +236,16 @@ async function callAction(action) {
   document.getElementById('stopBtn').disabled  = true;
   try {
     const result = await api('/api/' + action, { method: 'POST' });
-    document.getElementById('actionMessage').textContent  = result.message || '';
-    document.getElementById('actionMessage').style.color  = result.ok ? '#9fb0c0' : '#f87171';
+    document.getElementById('actionMessage').textContent = result.message || '';
+    document.getElementById('actionMessage').style.color = result.ok ? '#9fb0c0' : '#f87171';
   } finally { refresh(); }
 }
 
 async function testConnection() {
   const btn = document.getElementById('testBtn');
   const msg = document.getElementById('actionMessage');
-  btn.disabled    = true;
-  btn.textContent = '🔌 Testing…';
-  msg.textContent = 'Probing RPC…';
-  msg.style.color = '#9fb0c0';
+  btn.disabled = true; btn.textContent = '🔌 Testing…';
+  msg.textContent = 'Probing RPC…'; msg.style.color = '#9fb0c0';
   try {
     const r = await api('/api/test-rpc', { method: 'POST' });
     if (r.ok) {
@@ -237,27 +260,45 @@ async function testConnection() {
     msg.textContent = '✗ Test failed: ' + e.message;
     msg.style.color = '#f87171';
   } finally {
-    btn.disabled    = false;
-    btn.textContent = '🔌 Test Connection';
+    btn.disabled = false; btn.textContent = '🔌 Test Connection';
   }
 }
 
-// ── Main refresh loop ─────────────────────────────────────────────────────────
+// ── Reconnect countdown ───────────────────────────────────────────────────────
+let countdownInterval = null;
+
+function startCountdown(reconnectAt, attempt) {
+  stopCountdown();
+  document.getElementById('reconnectCountdown').style.display = 'block';
+  document.getElementById('reconnectAttemptLabel').textContent = attempt;
+
+  countdownInterval = setInterval(() => {
+    const sec = Math.max(0, Math.round((reconnectAt - Date.now()) / 1000));
+    document.getElementById('reconnectSec').textContent = sec;
+    if (sec <= 0) stopCountdown();
+  }, 500);
+}
+
+function stopCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  const el = document.getElementById('reconnectCountdown');
+  if (el) el.style.display = 'none';
+}
+
+// ── Main refresh ──────────────────────────────────────────────────────────────
 async function refresh() {
-  // Check session timeout first
   if (isSessionExpired()) { logout(); return; }
 
   try {
     const data = await api('/api/status');
 
+    // Server came back online
+    if (!serverOnline) { serverOnline = true; offlineSince = null; hideOffline(); }
+
     // Show main app
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('appMain').style.display   = 'block';
-    document.getElementById('logoutBtn').style.display = config?.webPassword !== false ? 'block' : 'none';
-
-    // Show logout button when password is set
-    document.getElementById('logoutBtn').style.display =
-      data.config.hasPassword ? 'block' : 'none';
+    document.getElementById('logoutBtn').style.display = data.config.hasPassword ? 'block' : 'none';
 
     // Header
     document.getElementById('hostLabel').textContent =
@@ -270,23 +311,45 @@ async function refresh() {
 
     // Reconnect badge
     const rb = document.getElementById('reconnectBadge');
-    rb.style.display = data.reconnecting ? 'inline-flex' : 'none';
-    if (data.reconnecting) rb.textContent = `⟳ Reconnecting… (attempt ${data.reconnectAttempt})`;
+    rb.style.display = (data.reconnecting && !data.circuitOpen) ? 'inline-flex' : 'none';
+    if (data.reconnecting) rb.textContent = `⟳ Reconnecting… (${data.reconnectAttempt}/20)`;
 
-    // Stats
-    document.getElementById('hashRate').textContent      = fmtHashRate(data.hashRate);
-    document.getElementById('validShares').textContent   = data.validShares;
-    document.getElementById('rejectedShares').textContent= data.rejectedShares;
-    document.getElementById('totalReward').textContent   = data.totalReward.toFixed(4) + ' GYDS';
-    document.getElementById('blockHeight').textContent   = data.blockHeight || '—';
-    document.getElementById('uptime').textContent        = fmtUptime(data.uptime);
+    // Circuit breaker badge + alert
+    document.getElementById('circuitBadge').style.display =
+      data.circuitOpen ? 'inline-flex' : 'none';
+    document.getElementById('circuitAlert').style.display =
+      data.circuitOpen ? 'block' : 'none';
 
-    // Controls label
+    // Reconnect countdown
+    if (data.reconnecting && data.reconnectAt && !data.circuitOpen) {
+      startCountdown(data.reconnectAt, data.reconnectAttempt);
+    } else {
+      stopCountdown();
+    }
+
+    // Session stats
+    document.getElementById('hashRate').textContent       = fmtHashRate(data.hashRate);
+    document.getElementById('validShares').textContent    = data.validShares;
+    document.getElementById('rejectedShares').textContent = data.rejectedShares;
+    document.getElementById('totalReward').textContent    = data.totalReward.toFixed(4) + ' GYDS';
+    document.getElementById('blockHeight').textContent    = data.blockHeight || '—';
+    document.getElementById('uptime').textContent         = fmtUptime(data.uptime);
+
+    // Lifetime stats
+    if (data.stats) {
+      const s = data.stats;
+      document.getElementById('ltShares').textContent   = s.lifetimeShares.toLocaleString();
+      document.getElementById('ltRejected').textContent = s.lifetimeRejected.toLocaleString();
+      document.getElementById('ltReward').textContent   = s.lifetimeReward.toFixed(4) + ' GYDS';
+      document.getElementById('ltTime').textContent     = fmtSeconds(s.lifetimeMiningSeconds);
+      document.getElementById('ltSessions').textContent = s.totalSessions;
+      document.getElementById('ltFirst').textContent    = fmtDate(s.firstStarted);
+    }
+
+    // Controls label + mode badge
     const mode = data.wallet?.miningMode || 'pool';
     document.getElementById('activeCoinLabel').textContent =
       `GYDS Network · ${mode === 'solo' ? '🎯 Solo' : '🏊 Pool'}`;
-
-    // Mode badge
     const mb = document.getElementById('walletModeBadge');
     mb.textContent = mode === 'solo' ? '🎯 Solo' : '🏊 Pool';
     mb.className   = `mode-badge ${mode}`;
@@ -295,13 +358,11 @@ async function refresh() {
     document.getElementById('startBtn').disabled = data.running || data.reconnecting;
     document.getElementById('stopBtn').disabled  = !data.running && !data.reconnecting;
 
-    // Chart
+    // Chart + efficiency
     drawChart(data.hashHistory);
-
-    // Efficiency
-    document.getElementById('effScore').textContent    =
-      data.efficiency.effScore     ? fmtHashRate(data.efficiency.effScore)    + ' / load'   : '—';
-    document.getElementById('hpsPerThread').textContent=
+    document.getElementById('effScore').textContent =
+      data.efficiency.effScore     ? fmtHashRate(data.efficiency.effScore)     + ' / load'   : '—';
+    document.getElementById('hpsPerThread').textContent =
       data.efficiency.hpsPerThread ? fmtHashRate(data.efficiency.hpsPerThread) + ' / thread' : '—';
 
     // Wallet form (fill once)
@@ -309,10 +370,11 @@ async function refresh() {
 
     // Config form (fill once)
     if (!configLoaded) {
-      document.getElementById('cfgWorker').value   = data.config.workerName;
-      document.getElementById('cfgThreads').value  = data.config.baseThreads ?? 0;
-      document.getElementById('cfgOverclock').value= data.config.overclock   ?? 1;
-      document.getElementById('cfgBatch').value    = data.config.batchSize   ?? 20000;
+      document.getElementById('cfgWorker').value     = data.config.workerName;
+      document.getElementById('cfgThreads').value    = data.config.baseThreads   ?? 0;
+      document.getElementById('cfgOverclock').value  = data.config.overclock      ?? 1;
+      document.getElementById('cfgBatch').value      = data.config.batchSize      ?? 20000;
+      document.getElementById('cfgBatchDelay').value = data.config.batchDelayMs   ?? 0;
       configLoaded = true;
     }
 
@@ -333,6 +395,7 @@ async function refresh() {
       ['Active Threads', cfg.effectiveThreads ?? sys.cpus],
       ['Overclock',      (isOC ? '⚡ ' : '') + (cfg.overclock ?? 1) + '×'],
       ['Batch Size',     (cfg.batchSize ?? 20000).toLocaleString()],
+      ['CPU Throttle',   cfg.batchDelayMs > 0 ? cfg.batchDelayMs + 'ms delay' : 'Off (max speed)'],
       ['Load avg',       sys.loadavg.map(n => n.toFixed(2)).join(', ')],
       ['Memory',         `${sys.totalMemMb - sys.freeMemMb} / ${sys.totalMemMb} MB`],
     ].map(([k, v]) => `
@@ -349,16 +412,21 @@ async function refresh() {
     if (data.lastError) {
       document.getElementById('actionMessage').textContent = '⚠ ' + data.lastError;
     }
+
   } catch (e) {
-    if (e.message !== 'unauthorized') console.error(e);
+    if (e.message === 'unauthorized' || e.message === 'rate-limited') return;
+
+    // Network / server error → show offline overlay
+    if (!offlineSince) offlineSince = Date.now();
+    serverOnline = false;
+    const sec = Math.round((Date.now() - offlineSince) / 1000);
+    showOffline(`Cannot reach the miner server (${sec}s ago). It may be restarting…`);
   }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-// Reset walletFormLoaded on page load so form always gets pre-filled once
 walletFormLoaded = false;
 
-// Check for expired session on load
 if (isSessionExpired()) {
   logout();
 } else {
@@ -367,7 +435,6 @@ if (isSessionExpired()) {
 
 setInterval(refresh, 3000);
 
-// Reset inactivity timer on any user interaction
 ['click', 'keydown', 'mousemove', 'touchstart'].forEach(evt =>
   document.addEventListener(evt, touchActivity, { passive: true })
 );
